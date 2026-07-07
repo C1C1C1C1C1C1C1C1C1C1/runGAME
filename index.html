@@ -1602,6 +1602,14 @@
             setTimeout(() => {
                 document.getElementById('modalOverlay').classList.remove('opacity-0');
             }, 10);
+            if (score > 0) {
+                    setTimeout(() => {
+                        let playerName = prompt("請輸入您的霓虹特攻代號（排行榜名稱）：", "無名英雄");
+                        if (playerName) {
+                            uploadScoreToFirebase(playerName, Math.floor(score));
+                        }
+                }, 500);
+            }
         }
 
         // --- 核心輸入操控模組 ---
@@ -1885,16 +1893,21 @@
         // 🟢 新增第 6 部分：Firebase 核心功能函數 (上傳與載入)
         // ==========================================
         function initFirebase() {
-            try {
-                if (typeof firebase !== 'undefined') {
-                    db = firebase.database();
-                    console.log("⚡ 賽博矩陣連線成功：Firebase Realtime Database 已就緒");
-                } else {
-                    console.error("❌ Firebase 未定義，請檢查 CDN SDK 是否正確載入");
-                }
-            } catch (e) {
-                console.error("❌ 初始化 Firebase 錯誤:", e);
+                const firebaseConfig = {
+                apiKey: "YOUR_API_KEY",
+                authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+                projectId: "YOUR_PROJECT_ID",
+                storageBucket: "YOUR_PROJECT_ID.appspot.com",
+                messagingSenderId: "YOUR_SENDER_ID",
+                appId: "YOUR_APP_ID"
+            };
+        
+            // 初始化 Firebase
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
             }
+            db = firebase.firestore();
+            console.log("Firebase Firestore 初始化成功！");
         }
 
         async function uploadScore(name, score) {
@@ -1910,6 +1923,28 @@
             } catch (e) {
                 console.error("❌ 分數上傳失敗:", e);
             }
+        }
+
+        function uploadScoreToFirebase(playerName, finalScore) {
+            if (!db) {
+                console.error("資料庫尚未就緒，無法上傳分數！");
+                return;
+            }
+        
+            // 將資料寫入名為 'leaderboard' 的集合中
+            db.collection("leaderboard").add({
+                name: playerName,
+                score: parseInt(finalScore),
+                timestamp: firebase.firestore.FieldValue.serverTimestamp() // 記錄伺服器時間
+            })
+            .then(() => {
+                console.log("排行榜分數上傳成功！");
+                // 成功後可以重新載入排行榜畫面
+                loadLeaderboard(); 
+            })
+            .catch((error) => {
+                console.error("分數上傳失敗: ", error);
+            });
         }
 
         function loadLeaderboard() {
