@@ -1931,91 +1931,96 @@
 
         function uploadScoreToFirebase(playerName, finalScore) {
             if (!db) {
-                console.error("❌ 資料庫尚未就緒，無法寫入資料！請檢查 initFirebase 是否成功。");
-                alert("資料庫連線失敗，分數未能成功上傳！");
+                console.error("❌ 資料庫尚未就緒，無法寫入資料！");
                 return;
             }
+        
+            console.log("正在嘗試寫入資料...", playerName, finalScore);
+        
+            // 確保分數是整數
+            const scoreToUpload = parseInt(finalScore) || 0;
         
             // 將資料寫入名為 'leaderboard' 的集合中
             db.collection("leaderboard").add({
                 name: playerName,
-                score: parseInt(finalScore),
-                timestamp: firebase.firestore.FieldValue.serverTimestamp() // 自動抓取伺服器時間排序
+                score: scoreToUpload,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp() // 使用伺服器時間
             })
             .then((docRef) => {
-                console.log("✨ 排行榜分數寫入成功！Doc ID:", docRef.id);
-                // 成功上傳後，自動重新拉取最新排行榜
-                loadLeaderboard(); 
+                // 🟢 安全的成功回應：docRef.id 是唯一真正安全的屬性
+                console.log("✨ 雲端資料庫寫入成功！文件 ID:", docRef.id);
+                
+                // 彈出成功提示（可加可不加，確認運作正常後可註冊掉）
+                // alert("分數上傳成功！"); 
+        
+                // 🟢 關鍵：成功後，安全地延遲 300 毫秒再載入排行榜，確保伺服器時間已同步
+                setTimeout(() => {
+                    if (typeof loadLeaderboard === "function") {
+                        loadLeaderboard(); 
+                    } else {
+                        console.error("找不到 loadLeaderboard 函數！");
+                    }
+                }, 300);
             })
             .catch((error) => {
-                console.error("❌ 寫入資料庫失敗，原因:", error);
-                alert("寫入資料庫失敗！請檢查 Firebase 規則設定或主控台報錯。");
+                // 🔴 只有當「真正被資料庫拒絕」時才會走到這裡
+                console.error("❌ 寫入資料庫發生真實錯誤:", error);
+                alert("寫入資料庫失敗！真實原因: " + error.message);
             });
         }
 
         function loadLeaderboard() {
-            if (!db) {
-                document.getElementById('leaderboardList').innerHTML = `<div class="text-center text-xs text-red-400 py-4">資料庫未連線</div>`;
+            if (!db) return;
+        
+            const leaderboardList = document.getElementById('leaderboardList');
+            if (!leaderboardList) {
+                console.error("網頁上找不到 id='leaderboardList' 的容器！");
                 return;
             }
-            
-            // 限制只取前 10 名最高分
-            db.ref('leaderboard').orderByChild('score').limitToLast(10).once('value', (snapshot) => {
-                const listContainer = document.getElementById('leaderboardList');
-                listContainer.innerHTML = ''; // 清空載入中字樣
-                
-                let records = [];
-                snapshot.forEach((childSnapshot) => {
-                    records.push(childSnapshot.val());
-                });
-                
-                // 因為 Firebase limitToLast 是升冪，我們需要反轉變成降冪（高分在上面）
-                records.reverse();
-                
-                if (records.length === 0) {
-                    listContainer.innerHTML = `<div class="text-center text-xs text-gray-500 py-4">目前尚無傳奇紀錄，等待你來開創！</div>`;
-                    return;
-                }
-                
-                records.forEach((data, index) => {
-                    const rank = index + 1;
-                    let medal = `<span class="w-5 text-gray-500 font-bold text-center">${rank}</span>`;
-                    let bgStyle = "bg-gray-900/40 border-gray-900";
-                    let nameStyle = "text-gray-300";
-                    let scoreStyle = "text-gray-400";
-
-                    if (rank === 1) {
-                        medal = `🥇`;
-                        bgStyle = "bg-yellow-950/40 border-yellow-700/50";
-                        nameStyle = "text-yellow-400 font-bold";
-                        scoreStyle = "text-yellow-300 font-black neon-text";
-                    } else if (rank === 2) {
-                        medal = `🥈`;
-                        bgStyle = "bg-slate-900/50 border-slate-700/50";
-                        nameStyle = "text-slate-300 font-bold";
-                        scoreStyle = "text-slate-200 font-bold";
-                    } else if (rank === 3) {
-                        medal = `🥉`;
-                        bgStyle = "bg-amber-950/30 border-amber-800/40";
-                        nameStyle = "text-amber-500 font-bold";
-                        scoreStyle = "text-amber-400 font-bold";
-                    }
-
-                    const item = document.createElement('div');
-                    item.className = `flex items-center justify-between p-2.5 rounded-lg border ${bgStyle} text-xs transition-all hover:scale-[1.01]`;
-                    item.innerHTML = `
-                        <div class="flex items-center gap-3">
-                            ${medal}
-                            <span class="${nameStyle} truncate max-w-[120px]">${data.username}</span>
-                        </div>
-                        <span class="${scoreStyle} font-mono tracking-wider">${data.score.toLocaleString()} 分</span>
-                    `;
-                    listContainer.appendChild(item);
-                });
-            }, (error) => {
-                console.error("載入排行榜失敗:", error);
-                document.getElementById('leaderboardList').innerHTML = `<div class="text-center text-xs text-red-400 py-4">數據載入失敗</div>`;
-            });
+        
+            leaderboardList.innerHTML = '<div class="text-center text-gray-400 py-4 animate-pulse">🎯 正在同步雲端英雄榜...</div>';
+        
+            db.collection("leaderboard")
+              .orderBy("score", "desc") // 按分數從高到低排序
+              .limit(10)
+              .get()
+              .then((querySnapshot) => {
+                  leaderboardList.innerHTML = "";
+        
+                  if (querySnapshot.empty) {
+                      leaderboardList.innerHTML = '<div class="text-center text-gray-500 py-4">目前尚無排行資料</div>';
+                      return;
+                  }
+        
+                  let rank = 1;
+                  querySnapshot.forEach((doc) => {
+                      // 🟢 安全防錯：萬一資料庫有某些壞掉或空欄位的資料，這樣寫才不會讓整台車翻覆
+                      const data = doc.data() || {};
+                      const name = data.name || "無名英雄";
+                      const score = data.score !== undefined ? data.score : 0;
+        
+                      let rankBadge = rank <= 3 ? ["🥇 ", "🥈 ", "🥉 "][rank - 1] : `${rank}. `;
+                      let rankColor = rank === 1 ? "text-yellow-400 font-bold" : "text-gray-300";
+        
+                      const item = document.createElement('div');
+                      item.className = "flex justify-between items-center bg-white/5 border border-white/10 rounded-lg p-3 mb-2 backdrop-blur-sm";
+                      item.innerHTML = `
+                          <div class="flex items-center gap-2">
+                              <span class="${rankColor}">${rankBadge}</span>
+                              <span class="text-white font-medium">${name}</span>
+                          </div>
+                          <div class="text-right">
+                              <span class="text-yellow-400 font-mono font-bold">${Math.floor(score)}</span> <span class="text-xs text-gray-400">分</span>
+                          </div>
+                      `;
+                      leaderboardList.appendChild(item);
+                      rank++;
+                  });
+              })
+              .catch((error) => {
+                  console.error("❌ 讀取排行榜失敗:", error);
+                  leaderboardList.innerHTML = `<div class="text-center text-red-400 py-4">❌ 無法載入排行榜 (${error.message})</div>`;
+              });
         }
         // 🟢 以上為新增的內容
         
