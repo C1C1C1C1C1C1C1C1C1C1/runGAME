@@ -1,0 +1,1907 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>3D 地鐵跑酷 - 終極賽博霓虹版</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #05050a;
+        }
+        #gameCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        /* 隱藏滾動條 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* 霓虹文字呼吸效果 */
+        .neon-text {
+            text-shadow: 0 0 10px rgba(234, 179, 8, 0.6), 0 0 20px rgba(234, 179, 8, 0.4);
+        }
+    </style>
+</head>
+<body class="relative">
+
+    <!-- 遊戲主畫面 Canvas -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- UI 介面層 -->
+    <div id="uiContainer" class="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 z-10">
+        <!-- 頂部資訊欄 -->
+        <div class="flex justify-between items-start w-full">
+            <!-- 得分與金幣 -->
+            <div class="bg-gray-950/90 backdrop-blur-md text-white px-4 py-2.5 rounded-2xl border border-yellow-500/30 flex gap-6 shadow-xl pointer-events-auto">
+                <div>
+                    <span class="text-[10px] text-gray-400 block uppercase font-bold tracking-widest">SCORE 分數</span>
+                    <span id="scoreVal" class="text-3xl font-black text-yellow-400 neon-text">0</span>
+                </div>
+                <div class="border-l border-gray-800 h-10 self-center"></div>
+                <div>
+                    <span class="text-[10px] text-gray-400 block uppercase font-bold tracking-widest">COINS 金幣</span>
+                    <span id="coinVal" class="text-3xl font-black text-amber-300 flex items-center gap-1">
+                        🪙 <span id="coinCount">0</span>
+                    </span>
+                </div>
+            </div>
+
+            <!-- 最高紀錄 -->
+            <div class="bg-gray-950/90 backdrop-blur-md text-white px-4 py-2.5 rounded-2xl border border-gray-800/80 shadow-lg text-right pointer-events-auto">
+                <span class="text-[10px] text-gray-400 block uppercase font-bold tracking-widest">BEST RECORD 最高紀錄</span>
+                <span id="highScoreVal" class="text-2xl font-black text-gray-100">0</span>
+            </div>
+        </div>
+
+        <!-- 下方 HUD -->
+        <div class="w-full flex justify-between items-end pb-2">
+            <!-- 左下方道具狀態指示器 -->
+            <div id="itemHUD" class="flex flex-col gap-2 mb-2 ml-2 pointer-events-auto">
+                <!-- 磁鐵 HUD -->
+                <div id="magnetHUD" class="hidden bg-gray-950/90 backdrop-blur-md text-white px-3 py-2 rounded-xl border border-red-500/50 flex items-center gap-3 shadow-lg w-44">
+                    <span class="text-xl animate-bounce">🧲</span>
+                    <div class="flex-1">
+                        <span class="text-[11px] text-red-400 font-black block tracking-wider">強力磁鐵</span>
+                        <div class="w-full bg-gray-800 h-2 rounded-full mt-1 overflow-hidden">
+                            <div id="magnetBar" class="bg-gradient-to-r from-red-500 to-amber-500 h-full w-full"></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 保護罩 HUD -->
+                <div id="shieldHUD" class="hidden bg-gray-950/90 backdrop-blur-md text-white px-3 py-2 rounded-xl border border-cyan-500/50 flex items-center gap-3 shadow-lg w-44">
+                    <span class="text-xl animate-pulse">🛡️</span>
+                    <div class="flex-1">
+                        <span class="text-[11px] text-cyan-400 font-black block tracking-wider">保護面罩</span>
+                        <div class="w-full bg-gray-800 h-2 rounded-full mt-1 overflow-hidden">
+                            <div id="shieldBar" class="bg-gradient-to-r from-cyan-500 to-blue-500 h-full w-full"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 操作說明提示 (PC 端可見) -->
+            <div class="hidden md:flex bg-gray-950/80 backdrop-blur-sm text-gray-300 text-xs px-4 py-2.5 rounded-full gap-5 border border-gray-800/80 mr-2 shadow-inner">
+                <span class="flex items-center gap-1">⬅️ / ➡️ 或 A / D : 更換跑道</span>
+                <span class="text-gray-600">|</span>
+                <span class="flex items-center gap-1">⬆️ 或 W / 空白鍵 : 跳躍</span>
+                <span class="text-gray-600">|</span>
+                <span class="flex items-center gap-1">⬇️ 或 S : 下蹲滑行</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 綜合大主畫面彈出視窗 -->
+    <div id="modalOverlay" class="absolute inset-0 bg-gray-950/90 backdrop-blur-md flex items-center justify-center z-20 transition-opacity duration-300 overflow-y-auto py-4">
+        <div class="bg-gray-900 border border-gray-800 p-6 rounded-3xl max-w-2xl w-11/12 text-center shadow-2xl my-auto overflow-hidden">
+            
+            <!-- 遊戲 Logo與累積金幣 -->
+            <div class="mb-5 flex flex-col sm:flex-row justify-between items-center border-b border-gray-800/80 pb-4 gap-3">
+                <div class="text-left">
+                    <div class="inline-block bg-yellow-400 text-gray-950 font-black text-[11px] px-2.5 py-0.5 rounded-md uppercase tracking-widest mb-1 shadow-sm">
+                        SUBWAY RUNNER X
+                    </div>
+                    <h1 id="modalTitle" class="text-3xl font-black text-white tracking-tight">地鐵跑酷：終極賽博霓虹</h1>
+                </div>
+                <div class="inline-flex items-center gap-1.5 bg-gray-950 border border-gray-800 px-4 py-2 rounded-2xl text-base font-black text-amber-300 shadow-inner">
+                    總儲存金幣: 🪙 <span id="totalCoinsDisplay">0</span>
+                </div>
+            </div>
+
+            <!-- 本局分數結算 -->
+            <div id="scoreBoard" class="hidden bg-gray-950 border border-gray-800/80 rounded-2xl p-5 mb-5 flex justify-around items-center shadow-inner">
+                <div class="text-center">
+                    <span class="text-gray-400 text-[10px] block uppercase font-bold tracking-widest mb-1">本次得分</span>
+                    <span id="finalScore" class="text-3xl font-black text-yellow-400 neon-text">0</span>
+                </div>
+                <div class="w-px h-10 bg-gray-800"></div>
+                <div class="text-center">
+                    <span class="text-gray-400 text-[10px] block uppercase font-bold tracking-widest mb-1">獲得金幣</span>
+                    <span id="finalCoins" class="text-3xl font-black text-amber-300">🪙 0</span>
+                </div>
+            </div>
+
+            <!-- 頂部大頁籤 -->
+            <div class="flex border-b border-gray-800 mb-5 gap-2 text-sm sm:text-base">
+                <button id="tabGameBtn" class="flex-1 font-bold pb-2.5 border-b-2 border-yellow-400 text-yellow-400 transition-colors">挑戰開跑</button>
+                <button id="tabShopBtn" class="flex-1 font-bold pb-2.5 border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-colors">滑板與角色造型 (3D預覽)</button>
+                <button id="tabRulesBtn" class="flex-1 font-bold pb-2.5 border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-colors">玩法教學</button>
+            </div>
+
+            <!-- 頁籤 A：開始挑戰 -->
+            <div id="tabGame" class="block py-4">
+                <p id="modalDesc" class="text-gray-400 text-sm mb-6 max-w-md mx-auto leading-relaxed">
+                    全新火車頂飛躍系統！<b>玩家可以直接踏上迎面而來的斜坡火車直接滑上車頂，並在隔軌車頂間來回橫跳！</b>車頂為絕對安全區，放膽挑戰極限分數吧！
+                </p>
+                <button id="startBtn" class="w-full max-w-md bg-gradient-to-r from-yellow-400 via-amber-400 to-yellow-500 text-gray-950 font-black text-xl py-4 px-8 rounded-2xl shadow-lg shadow-yellow-500/20 active:scale-95 hover:brightness-110 transition transform duration-150">
+                    開始挑戰
+                </button>
+            </div>
+
+            <!-- 頁籤 B：造型商城 -->
+            <div id="tabShop" class="hidden">
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
+                    <!-- 左側 3D 實時旋轉預覽視窗 -->
+                    <div class="md:col-span-5 bg-gray-950 rounded-2xl border border-gray-800 relative h-60 md:h-72 flex flex-col overflow-hidden shadow-inner">
+                        <div class="absolute top-2 left-2 bg-gray-900/80 border border-gray-800 text-[9px] text-gray-400 px-2 py-0.5 rounded font-bold z-10">
+                            🔮 3D 造型旋轉展示
+                        </div>
+                        <!-- 預覽用的 Canvas -->
+                        <canvas id="previewCanvas" class="w-full h-full block"></canvas>
+                        <div id="previewSkinName" class="absolute bottom-3 left-1/2 transform -translate-x-1/2 bg-gray-900/90 border border-gray-800/80 text-xs text-yellow-400 font-bold px-3.5 py-1.5 rounded-full shadow-md whitespace-nowrap pointer-events-none">
+                            經典科技藍
+                        </div>
+                    </div>
+
+                    <!-- 右側加大造型清單列表 -->
+                    <div class="md:col-span-7 space-y-2 max-h-72 overflow-y-auto pr-1 no-scrollbar text-left">
+                        <!-- 造型 1 -->
+                        <div onclick="previewSkin('classic_blue')" class="bg-gray-950/50 hover:bg-gray-950 border border-gray-800/80 rounded-2xl p-3 flex justify-between items-center cursor-pointer transition">
+                            <div>
+                                <h3 class="text-white text-xs font-bold flex items-center gap-1.5">🔷 經典科技藍 <span class="text-[9px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded">初始</span></h3>
+                                <p class="text-[11px] text-gray-400 mt-1">經典賽博跑酷配色，具備流暢極速尾跡</p>
+                            </div>
+                            <button onclick="buyOrSelectSkin('classic_blue', 0); event.stopPropagation();" id="btn-classic_blue" class="text-xs font-bold px-3 py-2 rounded-xl transition">使用中</button>
+                        </div>
+                        <!-- 造型 2 -->
+                        <div onclick="previewSkin('sakura_pink')" class="bg-gray-950/50 hover:bg-gray-950 border border-gray-800/80 rounded-2xl p-3 flex justify-between items-center cursor-pointer transition">
+                            <div>
+                                <h3 class="text-white text-xs font-bold flex items-center gap-1.5">🌸 櫻花幻境粉 <span class="text-[9px] bg-pink-500/20 text-pink-400 px-1.5 py-0.5 rounded">特技</span></h3>
+                                <p class="text-[11px] text-pink-400 mt-1">價格: 🪙 200 金幣 (前空翻 + 櫻花流光)</p>
+                            </div>
+                            <button onclick="buyOrSelectSkin('sakura_pink', 200); event.stopPropagation();" id="btn-sakura_pink" class="text-xs font-bold px-3 py-2 rounded-xl transition">解鎖</button>
+                        </div>
+                        <!-- 造型 3 -->
+                        <div onclick="previewSkin('flame_orange')" class="bg-gray-950/50 hover:bg-gray-950 border border-gray-800/80 rounded-2xl p-3 flex justify-between items-center cursor-pointer transition">
+                            <div>
+                                <h3 class="text-white text-xs font-bold flex items-center gap-1.5">🔥 烈焰爆破橘 <span class="text-[9px] bg-orange-500/20 text-orange-400 px-1.5 py-0.5 rounded">特技</span></h3>
+                                <p class="text-[11px] text-orange-400 mt-1">價格: 🪙 500 金幣 (前空翻 + 烈焰粒子流光)</p>
+                            </div>
+                            <button onclick="buyOrSelectSkin('flame_orange', 500); event.stopPropagation();" id="btn-flame_orange" class="text-xs font-bold px-3 py-2 rounded-xl transition">解鎖</button>
+                        </div>
+                        <!-- 造型 4 -->
+                        <div onclick="previewSkin('cyber_green')" class="bg-gray-950/50 hover:bg-gray-950 border border-gray-800/80 rounded-2xl p-3 flex justify-between items-center cursor-pointer transition">
+                            <div>
+                                <h3 class="text-white text-xs font-bold flex items-center gap-1.5">🟩 霓虹矩陣綠 <span class="text-[9px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded">特技</span></h3>
+                                <p class="text-[11px] text-green-400 mt-1">價格: 🪙 1,200 金幣 (前空翻 + 代碼矩陣流光)</p>
+                            </div>
+                            <button onclick="buyOrSelectSkin('cyber_green', 1200); event.stopPropagation();" id="btn-cyber_green" class="text-xs font-bold px-3 py-2 rounded-xl transition">解鎖</button>
+                        </div>
+                        <!-- 造型 5 -->
+                        <div onclick="previewSkin('golden_emperor')" class="bg-gray-950/50 hover:bg-gray-950 border border-gray-800/80 rounded-2xl p-3 flex justify-between items-center cursor-pointer transition">
+                            <div>
+                                <h3 class="text-white text-xs font-bold flex items-center gap-1.5">👑 皇家極光金 <span class="text-[9px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded">特技</span></h3>
+                                <p class="text-[11px] text-yellow-400 mt-1">價格: 🪙 3,000 金幣 (前空翻 + 尊爵金芒流光)</p>
+                            </div>
+                            <button onclick="buyOrSelectSkin('golden_emperor', 3000); event.stopPropagation();" id="btn-golden_emperor" class="text-xs font-bold px-3 py-2 rounded-xl transition">解鎖</button>
+                        </div>
+                        <!-- 造型 6 -->
+                        <div onclick="previewSkin('midnight_purple')" class="bg-gray-950/50 hover:bg-gray-950 border border-gray-800/80 rounded-2xl p-3 flex justify-between items-center cursor-pointer transition">
+                            <div>
+                                <h3 class="text-white text-xs font-bold flex items-center gap-1.5">🔮 賽博暗影紫 <span class="text-[9px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded">特技</span></h3>
+                                <p class="text-[11px] text-purple-400 mt-1">價格: 🪙 5,000 金幣 (前空翻 + 幽冥暗影流光)</p>
+                            </div>
+                            <button onclick="buyOrSelectSkin('midnight_purple', 5000); event.stopPropagation();" id="btn-midnight_purple" class="text-xs font-bold px-3 py-2 rounded-xl transition">解鎖</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 頁籤 C：玩法教學 -->
+            <div id="tabRules" class="hidden text-left max-h-72 overflow-y-auto pr-1 no-scrollbar text-xs text-gray-300 space-y-3">
+                <div class="bg-gray-950 p-4 rounded-xl border border-gray-800">
+                    <span class="font-bold text-yellow-400 text-sm block mb-1">🎮 操作指令說明</span>
+                    <p>• <b>← / → 或 A / D 鍵</b>：換道避讓。如果您此時人在一輛火車頂上，且隔壁軌道也有火車，您將可以直接<b>橫跳飛躍至相鄰火車頂</b>，完全不會跌落或死亡！</p>
+                    <p>• <b>↑ 或 W 鍵 / 空白鍵</b>：起跳！在車頂上同樣可以起跳收集更高的金幣，並且能輕易躍過迎面而來的低欄杆障礙物。</p>
+                    <p>• <b>↓ 或 S 鍵</b>：下蹲滑行 / 空中快速降落。下蹲能順滑避開車頂上的高欄杆。</p>
+                </div>
+                <div class="bg-gray-950 p-4 rounded-xl border border-gray-800">
+                    <span class="font-bold text-yellow-400 text-sm block mb-1">⚡ 車頂安全守護與加速機制</span>
+                    <p>• <b>車頂安全無損</b>：只要您的 Y 軸高於 $2.55$ 米（身處車頂範圍），任何普通的火車正面判定都會自動失效，不扣血、不死亡，讓您安全滑行！</p>
+                    <p>• <b>前空翻特技</b>：任何解鎖造型在滯空或車頂飛跳期間按跳躍，都會觸發<b>360度前空翻</b>並噴射繽紛粒子！</p>
+                    <p>• <b>撞擊與墜地震感</b>：碰撞或落地時加入<b>視角微幅震動</b>，大幅提升打擊回饋。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 首次登入新手引導彈出窗 -->
+    <div id="firstPlayOverlay" class="hidden absolute inset-0 bg-gray-950/95 backdrop-blur-lg flex items-center justify-center z-30">
+        <div class="bg-gray-900 border border-gray-800 p-8 rounded-3xl max-w-sm w-11/12 text-center shadow-2xl">
+            <div class="mb-5">
+                <span class="bg-yellow-400/20 text-yellow-400 font-extrabold text-xs px-3 py-1 rounded-full uppercase tracking-wider mb-2 inline-block">新手引導指南</span>
+                <h2 class="text-2xl font-extrabold text-white tracking-tight">歡迎來到賽博地鐵跑酷！</h2>
+                <p class="text-gray-400 text-xs mt-2 leading-relaxed">在首度出發前，請熟悉以下基本核心規則：</p>
+            </div>
+            <div class="space-y-3 text-left text-xs text-gray-300 mb-6 bg-gray-950 p-4 rounded-xl border border-gray-800 shadow-inner">
+                <div class="flex items-center gap-3"><span>⌨️</span><span>鍵盤 <b>← / → / A / D</b> 閃避，<b>↑ / W</b> 跳躍，<b>↓ / S</b> 滑行</span></div>
+                <div class="flex items-center gap-3"><span>📱</span><span>行動裝置在螢幕上進行 <b>上下左右手指滑動</b> 操控</span></div>
+                <div class="flex items-center gap-3"><span>🚄</span><span>衝上<b>青色斜面火車</b>可安全地衝到車頂奔跑</span></div>
+                <div class="flex items-center gap-3"><span>🛡️</span><span>拾取 🧲磁鐵 自動吸金，🛡️保護罩 可抵擋一次致命撞擊</span></div>
+            </div>
+            <button id="closeFirstPlayBtn" class="w-full bg-gradient-to-r from-yellow-400 to-amber-500 text-gray-950 font-black py-3.5 rounded-xl shadow-lg active:scale-95 transition">我了解規則了，進入主頁！</button>
+        </div>
+    </div>
+
+    <script>
+        // --- 核心遊戲變數 ---
+        let scene, camera, renderer;
+        let player;
+        const lanes = [-3.2, 0, 3.2];
+        let currentLane = 1;
+        let targetX = 0;
+        
+        let isJumping = false;
+        let jumpVelocity = 0;
+        const gravity = -0.015; 
+        const jumpStrength = 0.32; 
+        
+        let isSliding = false;
+        let slideTimer = 0;
+        const slideDuration = 40; 
+
+        let gameActive = false;
+        let score = 0;
+        let scoreAccumulator = 0; // 精準小數點分數累積器 (防止一開始 Math.floor 被無條件捨去為 0 的關鍵！)
+        let coins = 0;
+
+        // 本機儲存
+        let totalCoinsStored = parseInt(localStorage.getItem('subway_total_coins')) || 0;
+        let highScore = parseInt(localStorage.getItem('subway_high_score')) || 0;
+        let unlockedSkins = JSON.parse(localStorage.getItem('subway_unlocked_skins')) || ['classic_blue'];
+        let activeSkin = localStorage.getItem('subway_active_skin') || 'classic_blue';
+
+        // 3D 角色精細組件引用
+        let pBody, pHead, pLeftLeg, pRightLeg, pLeftArm, pRightArm, pBoard, pVisor, pLeftEye, pRightEye;
+        let pBeams = [];
+
+        // 霓虹發光背景與軌道
+        let leftNeonRail, rightNeonRail;
+        let tunnels = [];
+
+        // 速度管理
+        let speed = 0.28;       // 初始速度
+        let maxSpeed = 0.85;   
+        const speedIncrement = 0.015; // 每過 1000 分提速
+        let targetFov = 60;   
+
+        // 相機平滑隨動與相機震動
+        let groundY = 0;
+        let targetGroundY = 0;
+        let smoothedLookAtY = 1.2;
+        let cameraShakeIntensity = 0;
+        let cameraTilt = 0;
+
+        // 實體容器
+        let obstacles = [];
+        let coinObjects = [];
+        let itemObjects = []; 
+        let particles = []; 
+        let environmentObjects = [];
+        let windParticles = []; // 提速風切線
+
+        // 生產與道具計時器
+        let spawnTimer = 0;
+        let lastSpeedScore = 0;      
+        let nextItemScore = 4000;    
+        let currentItemInterval = 4000; 
+        let itemToSpawn = null;      
+        let magnetTimer = 0;         
+        let shieldTimer = 0;         
+        let shieldActive = false;    
+        let shieldMesh = null;       
+        let invulnerabilityTimer = 0; // 撞擊後無敵閃爍
+        const ITEM_DURATION = 420;   
+
+        const trackLength = 120;
+        let ground1, ground2;
+        let touchStartX = 0, touchStartY = 0;
+
+        // 特技動作旋轉角度
+        let trickRotation = 0;
+        let isTricking = false;
+
+        // 3D 商城預覽引擎
+        let previewScene, previewCamera, previewRenderer, previewGroup;
+        let previewAnimationFrameId;
+
+        // 物理邊界半徑 (避免火車任何部分的肉眼穿透現象)
+        const playerRadiusX = 0.42;  // 主角滑板半寬度
+        const playerRadiusZ = 0.95;  // 主角滑板半長度
+
+        const COLORS = {
+            bg: 0x050510, 
+            coin: 0xffea00, 
+            emissiveCoin: 0xff9900,
+            trainStatic: 0x111625, 
+            trainRamp: 0x00e1d9, 
+            trainMoving: 0xd9383a
+        };
+
+        const SKIN_COLORS = {
+            classic_blue:   { name: "經典科技藍", body: 0x3b82f6, visor: 0x00f0ff, board: 0x1e293b, energy: 0x00f0ff },
+            sakura_pink:    { name: "櫻花幻境粉", body: 0xec4899, visor: 0xffa3c4, board: 0x310515, energy: 0xffa3c4 },
+            flame_orange:   { name: "烈焰爆破橘", body: 0xf97316, visor: 0xffea00, board: 0x431407, energy: 0xffea00 },
+            cyber_green:    { name: "霓虹矩陣綠", body: 0x10b981, visor: 0x00ffcc, board: 0x022c22, energy: 0x00ffcc },
+            golden_emperor: { name: "皇家極光金", body: 0xeab308, visor: 0xfffbeb, board: 0x422006, energy: 0xfff700 },
+            midnight_purple:{ name: "賽博暗影紫", body: 0x8b5cf6, visor: 0xf3e8ff, board: 0x2e1065, energy: 0xd8b4fe }
+        };
+
+        // --- 輔助：創建火車前端斜面 (Wedge) ---
+        function createWedgeGeometry(width, height, depth) {
+            const geometry = new THREE.BufferGeometry();
+            const hw = width / 2; const hh = height; const hd = depth / 2;
+            const vertices = new Float32Array([
+                // 底面
+                -hw, 0,  hd,   hw, 0,  hd,   hw, 0, -hd,  -hw, 0,  hd,   hw, 0, -hd,  -hw, 0, -hd,
+                // 後面垂直牆
+                -hw, 0, -hd,   hw, 0, -hd,   hw, hh, -hd, -hw, 0, -hd,   hw, hh, -hd,  -hw, hh, -hd,
+                // 前斜面 
+                -hw, 0,  hd,   hw, hh, -hd,   hw, 0,  hd,  -hw, 0,  hd,  -hw, hh, -hd,   hw, hh, -hd,
+                // 左三角面
+                -hw, 0,  hd,  -hw, 0, -hd,  -hw, hh, -hd,
+                // 右三角面
+                 hw, 0,  hd,   hw, hh, -hd,   hw, 0, -hd
+            ]);
+            geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+            geometry.computeVertexNormals();
+            return geometry;
+        }
+
+        // --- 初始化主遊戲場景 ---
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(COLORS.bg);
+            scene.fog = new THREE.FogExp2(COLORS.bg, 0.009);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 4.8, 8.5); 
+            camera.lookAt(0, 1.2, -15);
+
+            renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gameCanvas'), antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            // 優化全局燈光，保證色調通透且色彩豐富
+            scene.add(new THREE.AmbientLight(0xffffff, 1.3)); 
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.2); 
+            dirLight.position.set(5, 25, 15);
+            scene.add(dirLight);
+
+            // 雙軌發光側條
+            const railGeo = new THREE.BoxGeometry(0.18, 0.18, trackLength * 2.2);
+            const railMat = new THREE.MeshBasicMaterial({ color: 0x00f3ff });
+            leftNeonRail = new THREE.Mesh(railGeo, railMat);
+            leftNeonRail.position.set(-5.5, 0.09, -trackLength / 2);
+            rightNeonRail = leftNeonRail.clone();
+            rightNeonRail.position.x = 5.5;
+            scene.add(leftNeonRail, rightNeonRail);
+
+            // 風切粒子供高速移動時使用
+            createWindParticles();
+
+            createGrounds();
+            createPlayer();
+            createInitialEnvironment();
+
+            document.getElementById('highScoreVal').innerText = highScore;
+            document.getElementById('totalCoinsDisplay').innerText = totalCoinsStored;
+
+            window.addEventListener('resize', onWindowResize);
+            setupInput();
+            initPreviewEngine();
+        }
+
+        function createGrounds() {
+            // 地軌與枕木 3D 化或極致紋理模擬
+            const groundGeometry = new THREE.PlaneGeometry(13.5, trackLength);
+            
+            // 繪製包含枕木 and 軌道的 Canvas 紋理
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+            
+            // 底板（碎石色）
+            ctx.fillStyle = '#0a0a14'; ctx.fillRect(0, 0, 512, 1024); 
+
+            // 枕木
+            ctx.fillStyle = '#1c1917';
+            for (let y = 0; y < 1024; y += 32) {
+                // 三條跑道的枕木
+                ctx.fillRect(40, y + 6, 80, 12);
+                ctx.fillRect(216, y + 6, 80, 12);
+                ctx.fillRect(392, y + 6, 80, 12);
+            }
+
+            // 鐵軌（三條跑道，每條兩根鐵軌）
+            ctx.fillStyle = '#64748b';
+            // 跑道 1
+            ctx.fillRect(48, 0, 6, 1024); ctx.fillRect(112, 0, 6, 1024);
+            // 跑道 2
+            ctx.fillRect(224, 0, 6, 1024); ctx.fillRect(288, 0, 6, 1024);
+            // 跑道 3
+            ctx.fillRect(400, 0, 6, 1024); ctx.fillRect(464, 0, 6, 1024);
+
+            // 兩側發光指示帶
+            ctx.fillStyle = '#ec4899';
+            ctx.fillRect(10, 0, 10, 1024);
+            ctx.fillRect(492, 0, 10, 1024);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(1, 3);
+
+            const groundMaterial = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.7 });
+            ground1 = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground1.rotation.x = -Math.PI / 2;
+            ground1.position.set(0, 0, -trackLength / 2 + 10);
+            scene.add(ground1);
+
+            ground2 = ground1.clone();
+            ground2.position.z = ground1.position.z - trackLength;
+            scene.add(ground2);
+        }
+
+        // --- 創建精細化卡通 3D 跑酷主角模型 ---
+        function createPlayer() {
+            player = new THREE.Group();
+            const config = SKIN_COLORS[activeSkin] || SKIN_COLORS['classic_blue'];
+
+            // 1. 滑板 (Board)
+            const boardGroup = new THREE.Group();
+            const boardBase = new THREE.Mesh(
+                new THREE.BoxGeometry(0.85, 0.12, 1.9), 
+                new THREE.MeshStandardMaterial({ color: config.board, roughness: 0.1, metalness: 0.4 })
+            );
+            boardGroup.add(boardBase);
+
+            // 翹起的前端
+            const boardFront = new THREE.Mesh(
+                new THREE.BoxGeometry(0.85, 0.12, 0.4),
+                new THREE.MeshStandardMaterial({ color: config.board, roughness: 0.1, metalness: 0.4 })
+            );
+            boardFront.position.set(0, 0.08, -1.0);
+            boardFront.rotation.x = -0.25;
+            boardGroup.add(boardFront);
+
+            // 翹起的後端
+            const boardBack = boardFront.clone();
+            boardBack.position.set(0, 0.08, 1.0);
+            boardBack.rotation.x = 0.25;
+            boardGroup.add(boardBack);
+
+            // 底部噴射器
+            const thruster = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.12, 0.12, 0.4, 8),
+                new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.8 })
+            );
+            thruster.rotation.x = Math.PI / 2;
+            thruster.position.set(0, -0.12, 0.6);
+            boardGroup.add(thruster);
+
+            // 兩側發光霓虹燈條
+            const neonMat = new THREE.MeshBasicMaterial({ color: config.energy });
+            const leftNeon = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 1.6), neonMat);
+            leftNeon.position.set(-0.44, 0.02, 0);
+            const rightNeon = leftNeon.clone(); rightNeon.position.x = 0.44;
+            boardGroup.add(leftNeon, rightNeon);
+            pBeams = [leftNeon, rightNeon];
+
+            boardGroup.position.y = 0.06;
+            player.add(boardGroup);
+            pBoard = boardGroup;
+
+            // 2. 身體
+            const bodyGeo = new THREE.BoxGeometry(0.55, 0.75, 0.4);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: config.body, metalness: 0.3, roughness: 0.5 });
+            pBody = new THREE.Mesh(bodyGeo, bodyMat);
+            pBody.position.y = 0.72;
+            player.add(pBody);
+
+            const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.75, 0.04), new THREE.MeshBasicMaterial({ color: config.energy }));
+            stripe.position.set(0, 0, 0.21);
+            pBody.add(stripe);
+
+            // 3. 頭部與耳機、大眼睛
+            const headGroup = new THREE.Group();
+            const skinMat = new THREE.MeshStandardMaterial({ color: 0xfdbbc7, roughness: 0.6 }); 
+            const face = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.42, 0.42), skinMat);
+            headGroup.add(face);
+
+            pVisor = new THREE.Mesh(
+                new THREE.BoxGeometry(0.52, 0.16, 0.15),
+                new THREE.MeshBasicMaterial({ color: config.energy })
+            );
+            pVisor.position.set(0, 0.08, 0.16);
+            headGroup.add(pVisor);
+
+            const phoneMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.3 });
+            const band = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.08, 0.2), phoneMat);
+            band.position.y = 0.22;
+            const leftEar = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.12, 12), phoneMat);
+            leftEar.rotation.z = Math.PI / 2;
+            leftEar.position.set(-0.25, 0, 0);
+            const rightEar = leftEar.clone(); rightEar.position.x = 0.25;
+            headGroup.add(band, leftEar, rightEar);
+
+            headGroup.position.y = 1.3;
+            player.add(headGroup);
+            pHead = headGroup;
+
+            // 4. 手部
+            const armGeo = new THREE.BoxGeometry(0.14, 0.45, 0.14);
+            const armMat = new THREE.MeshStandardMaterial({ color: config.body });
+            pLeftArm = new THREE.Mesh(armGeo, armMat);
+            pLeftArm.position.set(-0.35, 0.8, 0);
+            pRightArm = pLeftArm.clone(); pRightArm.position.x = 0.35;
+            player.add(pLeftArm, pRightArm);
+
+            // 5. 腿部與潮流鞋子
+            const legGeo = new THREE.BoxGeometry(0.15, 0.4, 0.15);
+            const legMat = new THREE.MeshStandardMaterial({ color: 0x1e293b }); 
+            pLeftLeg = new THREE.Mesh(legGeo, legMat);
+            pLeftLeg.position.set(-0.18, 0.3, 0);
+            pRightLeg = pLeftLeg.clone(); pRightLeg.position.x = 0.18;
+            player.add(pLeftLeg, pRightLeg);
+
+            const shoeGeo = new THREE.BoxGeometry(0.18, 0.12, 0.3);
+            const shoeMat = new THREE.MeshStandardMaterial({ color: 0xffffff }); 
+            const leftShoe = new THREE.Mesh(shoeGeo, shoeMat);
+            leftShoe.position.set(0, -0.22, 0.06);
+            pLeftLeg.add(leftShoe);
+
+            const rightShoe = leftShoe.clone();
+            pRightLeg.add(rightShoe);
+
+            player.position.set(lanes[currentLane], 0, 0);
+            scene.add(player);
+        }
+
+        // --- 生成風向阻力線 ---
+        function createWindParticles() {
+            const windMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22 });
+            for (let i = 0; i < 20; i++) {
+                const points = [];
+                points.push(new THREE.Vector3(0, 0, 0));
+                points.push(new THREE.Vector3(0, 0, Math.random() * 8 + 4));
+                const geo = new THREE.BufferGeometry().setFromPoints(points);
+                const line = new THREE.Line(geo, windMat);
+                line.position.set(
+                    (Math.random() - 0.5) * 16,
+                    Math.random() * 8 + 0.2,
+                    -Math.random() * 100
+                );
+                scene.add(line);
+                windParticles.push(line);
+            }
+        }
+
+        // --- 更新風阻風向線 ---
+        function updateWindParticles() {
+            const windSpeedFactor = speed * 4.5;
+            windParticles.forEach(line => {
+                line.position.z += windSpeedFactor;
+                line.material.opacity = Math.min(0.1 + (speed * 0.2), 0.45);
+                if (line.position.z > 10) {
+                    line.position.set(
+                        (Math.random() - 0.5) * 16,
+                        Math.random() * 8 + 0.2,
+                        -100 - Math.random() * 50
+                    );
+                }
+            });
+        }
+
+        function createInitialEnvironment() {
+            for (let z = 10; z > -trackLength * 2.2; z -= 18) { 
+                spawnPillar(z); 
+                if (z % 36 === 0) {
+                    spawnCyberTunnel(z);
+                }
+            }
+        }
+
+        // --- 摩天霓虹路軌燈柱 ---
+        function spawnPillar(zPos) {
+            const pillarGeo = new THREE.BoxGeometry(0.4, 13, 0.4);
+            const pillarMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 }); 
+            const leftPillar = new THREE.Mesh(pillarGeo, pillarMat); 
+            leftPillar.position.set(-6.8, 6.5, zPos);
+            
+            const rightPillar = leftPillar.clone(); 
+            rightPillar.position.x = 6.8;
+            scene.add(leftPillar, rightPillar);
+            environmentObjects.push(leftPillar, rightPillar);
+
+            // LED 燈條
+            const neonStripGeo = new THREE.BoxGeometry(0.1, 10, 0.1);
+            const neonStripMat = new THREE.MeshBasicMaterial({ color: 0xec4899 }); 
+            const leftStrip = new THREE.Mesh(neonStripGeo, neonStripMat);
+            leftStrip.position.set(-6.55, 6.5, zPos);
+            
+            const rightStrip = leftStrip.clone();
+            rightStrip.position.x = 6.55;
+            scene.add(leftStrip, rightStrip);
+            environmentObjects.push(leftStrip, rightStrip);
+        }
+
+        // --- 賽博朋克拱形霓虹隧道 ---
+        function spawnCyberTunnel(zPos) {
+            const tunnelGroup = new THREE.Group();
+            
+            const archCount = 18;
+            const radius = 6.8;
+            const geom = new THREE.BoxGeometry(0.3, 0.3, 0.8);
+            const mat = new THREE.MeshBasicMaterial({ color: 0x00f3ff });
+
+            for (let i = 0; i <= archCount; i++) {
+                const angle = (i / archCount) * Math.PI;
+                const x = Math.cos(angle) * radius;
+                const y = Math.sin(angle) * 5.8; 
+                
+                const segment = new THREE.Mesh(geom, mat);
+                segment.position.set(x, y, 0);
+                segment.rotation.z = angle - Math.PI / 2;
+                tunnelGroup.add(segment);
+            }
+
+            tunnelGroup.position.set(0, 0, zPos);
+            scene.add(tunnelGroup);
+            tunnels.push(tunnelGroup);
+            environmentObjects.push(tunnelGroup);
+        }
+
+        // --- 金幣爆破發光效果 ---
+        function createCoinPopEffect(pos) {
+            const pCount = 9; 
+            const pGeo = new THREE.BoxGeometry(0.14, 0.14, 0.14);
+            const pMat = new THREE.MeshBasicMaterial({ color: 0xfff200 });
+
+            for(let i=0; i<pCount; i++) {
+                const mesh = new THREE.Mesh(pGeo, pMat);
+                mesh.position.copy(pos);
+                mesh.userData = {
+                    vx: (Math.random() - 0.5) * 0.16,
+                    vy: (Math.random() * 0.16) + 0.08,
+                    vz: (Math.random() - 0.5) * 0.16,
+                    life: 25 
+                };
+                scene.add(mesh);
+                particles.push(mesh);
+            }
+        }
+
+        // --- 空中翻滾特技與滑板炫光尾跡 ---
+        function createJumpTrailParticle(pos, color) {
+            const pGeo = new THREE.BoxGeometry(0.15, 0.15, 0.15);
+            const pMat = new THREE.MeshBasicMaterial({ color: color });
+            const mesh = new THREE.Mesh(pGeo, pMat);
+            
+            mesh.position.copy(pos);
+            mesh.position.z += 0.8; 
+            mesh.userData = {
+                vx: (Math.random() - 0.5) * 0.06,
+                vy: (Math.random() - 0.5) * 0.03 - 0.04, 
+                vz: speed * 0.22, 
+                life: 20 
+            };
+            scene.add(mesh);
+            particles.push(mesh);
+        }
+
+        // --- 落地衝擊波光圈 ---
+        function createLandingShockwave(pos, color) {
+            const ringGeo = new THREE.TorusGeometry(0.8, 0.05, 8, 20);
+            const ringMat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 1.0 });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            
+            ring.rotation.x = Math.PI / 2;
+            ring.position.copy(pos);
+            ring.position.y = groundY + 0.05; 
+            
+            ring.userData = {
+                type: 'shockwave',
+                scaleSpeed: 0.15,
+                life: 14
+            };
+            scene.add(ring);
+            particles.push(ring);
+        }
+
+        function updateParticles() {
+            for(let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                
+                if (p.userData.type === 'shockwave') {
+                    p.scale.x += p.userData.scaleSpeed;
+                    p.scale.y += p.userData.scaleSpeed;
+                    p.material.opacity -= 0.08;
+                    p.userData.life--;
+                    if (p.userData.life <= 0) {
+                        scene.remove(p);
+                        p.geometry.dispose();
+                        p.material.dispose();
+                        particles.splice(i, 1);
+                    }
+                    continue;
+                }
+
+                p.position.x += p.userData.vx;
+                p.position.y += p.userData.vy;
+                p.position.z += p.userData.vz;
+                p.userData.life--;
+                p.rotation.x += 0.08;
+                p.rotation.y += 0.08;
+
+                if(p.userData.life <= 0) {
+                    scene.remove(p);
+                    p.geometry.dispose();
+                    p.material.dispose();
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        // --- 智慧側邊換軌物理阻擋系統 ---
+        function isLaneBlocked(laneIdx) {
+            const laneX = lanes[laneIdx];
+            for (let obs of obstacles) {
+                const obsX = obs.mesh.position.x;
+                if (Math.abs(obsX - laneX) < 1.0) {
+                    const obsMinZ = obs.mesh.position.z - obs.radiusZ;
+                    const obsMaxZ = obs.mesh.position.z + obs.radiusZ;
+                    
+                    // 檢查 Z 軸是否重疊
+                    if (obsMinZ <= 1.2 && obsMaxZ >= -1.2) {
+                        // 1. 如果目標軌道上是火車 (普通、移動、斜坡火車均適用)
+                        if (obs.type === 'train' || obs.type === 'moving_train' || obs.type === 'ramp_train') {
+                            // 若玩家在地面高度，會被火車身死死擋住
+                            if (player.position.y < 2.5) {
+                                return true;
+                            }
+                        } 
+                        // 2. 如果目標車道是高欄杆
+                        else if (obs.type === 'barrier_high') {
+                            return true;
+                        } 
+                        // 3. 如果目標車道是低欄杆
+                        else if (obs.type === 'barrier_low') {
+                            if (player.position.y < 0.95) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        // --- 智慧防堵卡死生產器 ---
+        function handleSpawning() {
+            spawnTimer++;
+            const currentInterval = Math.max(14, Math.floor(28 - (speed - 0.25) * 60));
+            
+            if (spawnTimer >= currentInterval) {
+                spawnTimer = 0;
+                
+                const activeLanes = [0, 1, 2];
+                const escapeLane = Math.floor(Math.random() * 3); 
+                activeLanes.splice(escapeLane, 1); 
+
+                const escapeChoice = Math.random();
+                if (escapeChoice < 0.60) {
+                    if (canSpawnObstacle(escapeLane, 'ramp_train')) {
+                        spawnRampTrain(escapeLane);
+                    }
+                } else {
+                    if (itemToSpawn !== null) {
+                        spawnItem(escapeLane, itemToSpawn);
+                        itemToSpawn = null;
+                    } else {
+                        spawnCoinRowOnGround(escapeLane);
+                    }
+                }
+
+                const obstacleLane1 = activeLanes[0];
+                const obstacleLane2 = activeLanes[1];
+
+                const obstacleChoice = Math.random();
+                if (obstacleChoice < 0.40) {
+                    if (canSpawnObstacle(obstacleLane1, 'moving_train')) {
+                        spawnMovingTrain(obstacleLane1);
+                    }
+                    if (Math.random() > 0.45 && canSpawnObstacle(obstacleLane2, 'barrier')) {
+                        spawnBarrier(obstacleLane2);
+                    }
+                } 
+                else if (obstacleChoice < 0.80) {
+                    if (canSpawnObstacle(obstacleLane1, 'train')) {
+                        spawnTrain(obstacleLane1);
+                    }
+                    if (Math.random() > 0.45 && canSpawnObstacle(obstacleLane2, 'barrier')) {
+                        spawnBarrier(obstacleLane2);
+                    }
+                }
+                else {
+                    if (canSpawnObstacle(obstacleLane1, 'barrier')) spawnBarrier(obstacleLane1);
+                    if (canSpawnObstacle(obstacleLane2, 'barrier')) spawnBarrier(obstacleLane2);
+                }
+            }
+        }
+
+        function canSpawnObstacle(laneIdx, type) {
+            const laneX = lanes[laneIdx];
+            for (let obs of obstacles) {
+                if (Math.abs(obs.mesh.position.x - laneX) < 1.0 && obs.mesh.position.z < -40 && obs.mesh.position.z > -110) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // --- 1. 普通靜止火車 ---
+        function spawnTrain(laneIdx) {
+            const trainGroup = new THREE.Group();
+            
+            const bodyGeo = new THREE.BoxGeometry(2.3, 2.7, 18);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: COLORS.trainStatic, metalness: 0.6, roughness: 0.2 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 1.35;
+            trainGroup.add(body);
+
+            // 車窗
+            const windowGeo = new THREE.BoxGeometry(2.36, 0.5, 1.8);
+            const windowMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.1 });
+            for (let z = -6; z <= 6; z += 3.5) {
+                if (z !== 0) {
+                    const win = new THREE.Mesh(windowGeo, windowMat);
+                    win.position.set(0, 1.6, z);
+                    trainGroup.add(win);
+                }
+            }
+
+            // 火車大燈
+            const lightGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.1, 10);
+            const lightMat = new THREE.MeshBasicMaterial({ color: 0xffea00 });
+            const leftL = new THREE.Mesh(lightGeo, lightMat);
+            leftL.rotation.x = Math.PI / 2;
+            leftL.position.set(-0.7, 0.6, 9.02);
+            const rightL = leftL.clone(); rightL.position.x = 0.7;
+            trainGroup.add(leftL, rightL);
+
+            // 車頂指示霓虹燈條
+            const neon = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 18), new THREE.MeshBasicMaterial({ color: 0xeab308 }));
+            neon.position.set(0, 2.75, 0);
+            trainGroup.add(neon);
+
+            trainGroup.position.set(lanes[laneIdx], 0.1, -120);
+            scene.add(trainGroup);
+
+            obstacles.push({
+                mesh: trainGroup,
+                type: 'train',
+                radiusX: 1.15, radiusY: 2.7, radiusZ: 9.0,
+                hasCoins: true
+            });
+
+            spawnCoinsOnTrain(laneIdx, -120, 2.85);
+        }
+
+        // --- 2. 迎面呼嘯而來的逆行火車 ---
+        function spawnMovingTrain(laneIdx) {
+            const trainGroup = new THREE.Group();
+
+            const bodyGeo = new THREE.BoxGeometry(2.3, 2.7, 18);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: COLORS.trainMoving, metalness: 0.6, roughness: 0.2 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 1.35;
+            trainGroup.add(body);
+
+            // 火車頭部車燈
+            const lightGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.1, 10);
+            const lightMat = new THREE.MeshBasicMaterial({ color: 0xff2a00 }); 
+            const leftL = new THREE.Mesh(lightGeo, lightMat);
+            leftL.rotation.x = Math.PI / 2;
+            leftL.position.set(-0.7, 0.6, 9.02);
+            const rightL = leftL.clone(); rightL.position.x = 0.7;
+            trainGroup.add(leftL, rightL);
+
+            const neon = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 18), new THREE.MeshBasicMaterial({ color: 0xff3b30 }));
+            neon.position.set(0, 2.75, 0);
+            trainGroup.add(neon);
+
+            trainGroup.position.set(lanes[laneIdx], 0.1, -120);
+            scene.add(trainGroup);
+
+            obstacles.push({
+                mesh: trainGroup,
+                type: 'moving_train',
+                radiusX: 1.15, radiusY: 2.7, radiusZ: 9.0,
+                speedZ: 0.08 + (speed * 0.45) 
+            });
+        }
+
+        // --- 3. 起跳斜坡火車 ---
+        function spawnRampTrain(laneIdx) {
+            const trainGroup = new THREE.Group();
+
+            // 火車主體後半截
+            const bodyGeo = new THREE.BoxGeometry(2.3, 2.7, 12);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: COLORS.trainRamp, metalness: 0.5, roughness: 0.2 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.set(0, 1.35, -3); 
+            trainGroup.add(body);
+
+            // 火車前半部分：斜面滑坡
+            const wedgeGeo = createWedgeGeometry(2.3, 2.7, 6);
+            const wedge = new THREE.Mesh(wedgeGeo, bodyMat);
+            wedge.position.set(0, 0, 6);
+            trainGroup.add(wedge);
+
+            const indicator = new THREE.Mesh(
+                new THREE.BoxGeometry(0.12, 0.12, 18),
+                new THREE.MeshBasicMaterial({ color: 0x00f3ff })
+            );
+            indicator.position.set(0, 2.75, -3);
+            trainGroup.add(indicator);
+
+            trainGroup.position.set(lanes[laneIdx], 0.1, -120);
+            scene.add(trainGroup);
+
+            obstacles.push({
+                mesh: trainGroup,
+                type: 'ramp_train',
+                radiusX: 1.15, radiusY: 2.7, radiusZ: 9.0,
+                rampStartY: 0, rampEndY: 2.7,
+                rampZStart: 9, rampZEnd: 3 
+            });
+
+            spawnCoinsOnRamp(laneIdx, -120);
+        }
+
+        // --- 4. 欄杆障礙物 ---
+        function spawnBarrier(laneIdx) {
+            const barrierGroup = new THREE.Group();
+            const isHigh = Math.random() < 0.45;
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = 64; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#f59e0b'; ctx.fillRect(0,0,64,128);
+            ctx.fillStyle = '#0f172a';
+            for(let y=0; y<128; y+=24){
+                ctx.beginPath();
+                ctx.moveTo(0, y); ctx.lineTo(64, y+16); ctx.lineTo(64, y+24); ctx.lineTo(0, y+8);
+                ctx.fill();
+            }
+            const stripeTex = new THREE.CanvasTexture(canvas);
+
+            const postMat = new THREE.MeshStandardMaterial({ map: stripeTex, roughness: 0.5 });
+            const postGeo = new THREE.BoxGeometry(0.2, isHigh ? 2.3 : 1.1, 0.2);
+            
+            const leftPost = new THREE.Mesh(postGeo, postMat);
+            leftPost.position.set(-1.1, (isHigh ? 2.3 : 1.1)/2, 0);
+            const rightPost = leftPost.clone();
+            rightPost.position.x = 1.1;
+            
+            barrierGroup.add(leftPost, rightPost);
+
+            const barGeo = new THREE.BoxGeometry(2.35, 0.24, 0.24);
+            const bar = new THREE.Mesh(barGeo, postMat);
+            bar.position.y = isHigh ? 2.15 : 0.95;
+            barrierGroup.add(bar);
+
+            const light = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.15, 0.3), new THREE.MeshBasicMaterial({ color: 0xff0055 }));
+            light.position.y = isHigh ? 2.32 : 1.12;
+            barrierGroup.add(light);
+
+            barrierGroup.position.set(lanes[laneIdx], 0.05, -120);
+            scene.add(barrierGroup);
+
+            obstacles.push({
+                mesh: barrierGroup,
+                type: isHigh ? 'barrier_high' : 'barrier_low',
+                radiusX: 1.1, radiusY: isHigh ? 2.3 : 1.0, radiusZ: 0.3
+            });
+        }
+
+        // --- 金幣與道具生成 ---
+        function spawnCoinRowOnGround(laneIdx) {
+            const laneX = lanes[laneIdx];
+            for (let i = 0; i < 5; i++) {
+                spawnCoin(laneX, 0.55, -120 - (i * 2.5));
+            }
+        }
+
+        function spawnCoinsOnTrain(laneIdx, trainZ, heightY) {
+            const laneX = lanes[laneIdx];
+            for (let i = 0; i < 5; i++) {
+                spawnCoin(laneX, heightY, trainZ - 6 + (i * 3.0));
+            }
+        }
+
+        function spawnCoinsOnRamp(laneIdx, trainZ) {
+            const laneX = lanes[laneIdx];
+            const heights = [0.6, 1.4, 2.3, 3.4, 3.4, 3.4, 2.3, 1.2];
+            for (let i = 0; i < heights.length; i++) {
+                spawnCoin(laneX, heights[i], trainZ + 8 - (i * 2.8));
+            }
+        }
+
+        function spawnCoin(x, y, z) {
+            const coinGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.1, 12);
+            const coinMat = new THREE.MeshStandardMaterial({ 
+                color: COLORS.coin, 
+                emissive: COLORS.emissiveCoin, 
+                roughness: 0.1, 
+                metalness: 0.85 
+            });
+            const coinMesh = new THREE.Mesh(coinGeo, coinMat);
+            coinMesh.rotation.x = Math.PI / 2;
+            coinMesh.position.set(x, y, z);
+            scene.add(coinMesh);
+            coinObjects.push(coinMesh);
+        }
+
+        function spawnItem(laneIdx, type) {
+            const itemGroup = new THREE.Group();
+            
+            const ring = new THREE.Mesh(
+                new THREE.TorusGeometry(0.48, 0.06, 6, 16),
+                new THREE.MeshBasicMaterial({ color: type === 'magnet' ? 0xef4444 : 0x06b6d4 })
+            );
+            ring.rotation.x = Math.PI / 2;
+            itemGroup.add(ring);
+
+            let core;
+            if (type === 'magnet') {
+                core = new THREE.Group();
+                const uGeo = new THREE.BoxGeometry(0.18, 0.5, 0.18);
+                const redMat = new THREE.MeshStandardMaterial({ color: 0xef4444, metalness: 0.5 });
+                const silverMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.8 });
+
+                const leftLobe = new THREE.Mesh(uGeo, redMat); leftLobe.position.x = -0.16;
+                const rightLobe = leftLobe.clone(); rightLobe.position.x = 0.16;
+                
+                const bottomLobe = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.18, 0.18), redMat);
+                bottomLobe.position.y = -0.22;
+
+                const leftTip = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 0.18), silverMat);
+                leftTip.position.set(-0.16, 0.22, 0);
+                const rightTip = leftTip.clone(); rightTip.position.x = 0.16;
+
+                core.add(leftLobe, rightLobe, bottomLobe, leftTip, rightTip);
+                core.position.y = 0.5;
+            } else {
+                core = new THREE.Group();
+                const shieldGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.12, 6);
+                const shieldMat = new THREE.MeshStandardMaterial({ color: 0x06b6d4, roughness: 0.1, metalness: 0.5 });
+                const shieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
+                shieldMesh.rotation.x = Math.PI / 2;
+                
+                const pattern = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.45, 0.15), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+                const patternH = pattern.clone(); patternH.rotation.z = Math.PI/2;
+                
+                core.add(shieldMesh, pattern, patternH);
+                core.position.y = 0.5;
+            }
+
+            itemGroup.add(core);
+            itemGroup.position.set(lanes[laneIdx], 0.65, -120);
+            scene.add(itemGroup);
+
+            itemObjects.push({
+                mesh: itemGroup,
+                type: type,
+                radius: 0.65
+            });
+        }
+
+        // --- 核心更新循環與物理判定 ---
+        function update() {
+            requestAnimationFrame(update);
+
+            if (!gameActive) {
+                // 待機畫面動畫
+                const idleTime = Date.now() * 0.003;
+                if (pBoard) {
+                    pBoard.position.y = 0.06 + Math.sin(idleTime * 2) * 0.04;
+                }
+                if (pLeftArm && pRightArm) {
+                    pLeftArm.rotation.x = Math.sin(idleTime) * 0.2;
+                    pRightArm.rotation.x = -Math.sin(idleTime) * 0.2;
+                }
+                if (renderer && scene && camera) {
+                    renderer.render(scene, camera);
+                }
+                return; 
+            }
+
+            // 【分數修復】利用 scoreAccumulator 進行浮點數精密累加，避免因為 speed 太低而被 Math.floor 捨去為 0 
+            scoreAccumulator += speed * 4.8; // 初始 speed 為 0.28，每幀約增加 1.34 分，一秒（60幀）約增加 80 分。速度越快，得分越快！
+            score = Math.floor(scoreAccumulator);
+            document.getElementById('scoreVal').innerText = score;
+
+            if (score - lastSpeedScore >= 1000) {
+                lastSpeedScore = score;
+                speed = Math.min(speed + speedIncrement, maxSpeed);
+                targetFov = Math.min(60 + (speed - 0.28) * 45, 90);
+                cameraShakeIntensity = 0.22;
+            }
+
+            if (camera.fov !== targetFov) {
+                camera.fov += (targetFov - camera.fov) * 0.08;
+                camera.updateProjectionMatrix();
+            }
+
+            if (score >= nextItemScore) {
+                itemToSpawn = Math.random() < 0.5 ? 'magnet' : 'shield';
+                nextItemScore += currentItemInterval;
+            }
+
+            updateParticles();
+            updateWindParticles();
+
+            // 滑行下蹲縮放動畫
+            if (isSliding) {
+                slideTimer--;
+                if (pBody) {
+                    pBody.scale.set(1.0, 0.45, 1.0);
+                    pBody.position.y = 0.42;
+                    pHead.position.y = 0.85;
+                }
+                if (slideTimer <= 0) {
+                    isSliding = false;
+                    if (pBody) {
+                        pBody.scale.set(1.0, 1.0, 1.0);
+                        pBody.position.y = 0.72;
+                        pHead.position.y = 1.3;
+                    }
+                }
+            }
+
+            // 地面與背景滾動
+            const zMovement = speed * 3.5;
+            ground1.position.z += zMovement;
+            ground2.position.z += zMovement;
+
+            if (ground1.position.z > trackLength / 2 + 15) {
+                ground1.position.z = ground2.position.z - trackLength;
+            }
+            if (ground2.position.z > trackLength / 2 + 15) {
+                ground2.position.z = ground1.position.z - trackLength;
+            }
+
+            // 環境滾動
+            for (let i = environmentObjects.length - 1; i >= 0; i--) {
+                const env = environmentObjects[i];
+                env.position.z += zMovement;
+                if (env.position.z > 20) {
+                    env.position.z -= trackLength * 2.2;
+                }
+            }
+
+            // 障礙物位置更新（先於高度和碰撞計算，確保當幀座標完全同步）
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                obs.mesh.position.z += zMovement;
+
+                if (obs.type === 'moving_train') {
+                    obs.mesh.position.z += obs.speedZ;
+                }
+
+                // 跑過頭則清除
+                if (obs.mesh.position.z > 20) {
+                    scene.remove(obs.mesh);
+                    obs.mesh.traverse(child => {
+                        if (child.isMesh) {
+                            child.geometry.dispose();
+                            child.material.dispose();
+                        }
+                    });
+                    obstacles.splice(i, 1);
+                }
+            }
+
+            // --- 第一階段：實時車頂/斜坡高度檢測 (Car-Top & Ramp Landing Engine) ---
+            let highestRampY = 0;
+            let currentLandedRamp = false;
+            const roofToleranceX = 1.57; // obs.radiusX + playerRadiusX (1.15 + 0.42)
+
+            for (let obs of obstacles) {
+                const dx = Math.abs(player.position.x - obs.mesh.position.x);
+                const dz = player.position.z - obs.mesh.position.z; // dz = -obs.mesh.position.z
+
+                if (dx < roofToleranceX && dz > -9.5 && dz < 9.5) {
+                    if (obs.type === 'train' || obs.type === 'moving_train') {
+                        // 只要玩家高度大於或接近車頂，就提供車頂平台高度
+                        if (player.position.y >= 2.0) {
+                            highestRampY = Math.max(highestRampY, 2.75);
+                            currentLandedRamp = true;
+                        }
+                    } else if (obs.type === 'ramp_train') {
+                        // 斜坡火車：前半截dz為 [2.8, 9.5] 的斜坡段
+                        if (dz >= 2.8 && dz <= 9.5) {
+                            const ratio = Math.max(0, Math.min(1, (9.5 - dz) / 6.7));
+                            const rampHeight = ratio * 2.75;
+                            highestRampY = Math.max(highestRampY, rampHeight);
+                            currentLandedRamp = true;
+                        } 
+                        // 平坦車頂段
+                        else if (dz >= -9.5 && dz < 2.8) {
+                            if (player.position.y >= 2.0) {
+                                highestRampY = Math.max(highestRampY, 2.75);
+                                currentLandedRamp = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 決定此時的地平面高度目標
+            targetGroundY = currentLandedRamp ? highestRampY : 0;
+
+            // --- 第二階段：應用物理力、跳躍與落體動態 ---
+            if (isJumping) {
+                jumpVelocity += gravity;
+                player.position.y += jumpVelocity;
+
+                if (activeSkin !== 'classic_blue' && isTricking) {
+                    trickRotation += 0.22;
+                    if (trickRotation < Math.PI * 2) {
+                        pBody.rotation.x = trickRotation;
+                        pBoard.rotation.x = trickRotation;
+                        pHead.rotation.x = trickRotation;
+                    } else {
+                        isTricking = false;
+                        pBody.rotation.x = 0;
+                        pBoard.rotation.x = 0;
+                        pHead.rotation.x = 0;
+                    }
+                }
+
+                const activeColor = SKIN_COLORS[activeSkin]?.energy || 0x00f0ff;
+                if (Math.random() < 0.65) {
+                    createJumpTrailParticle(player.position, activeColor);
+                }
+
+                // 落地判定（包含斜坡或車頂）
+                if (player.position.y <= targetGroundY) {
+                    player.position.y = targetGroundY;
+                    isJumping = false;
+                    jumpVelocity = 0;
+                    trickRotation = 0;
+                    isTricking = false;
+                    
+                    pBody.rotation.x = 0;
+                    pBoard.rotation.x = 0;
+                    pHead.rotation.x = 0;
+
+                    createLandingShockwave(player.position, activeColor);
+                    cameraShakeIntensity = 0.12; 
+                }
+            } else {
+                // 如果目前在非跳躍跑步狀態
+                if (player.position.y > targetGroundY + 0.1) {
+                    // 若跑出了車頂，轉為自由落體
+                    isJumping = true;
+                    jumpVelocity = 0; 
+                } else {
+                    // 貼合坡度/地面
+                    player.position.y = targetGroundY;
+                }
+            }
+
+            // 無敵閃爍
+            if (invulnerabilityTimer > 0) {
+                invulnerabilityTimer--;
+                player.visible = (Math.floor(invulnerabilityTimer / 3) % 2 === 0);
+                if (invulnerabilityTimer === 0) player.visible = true;
+            }
+
+            // 平滑換軌
+            player.position.x += (targetX - player.position.x) * 0.22;
+            
+            const pDx = targetX - player.position.x;
+            pBoard.rotation.z = -pDx * 0.28;
+            pBody.rotation.z = -pDx * 0.18;
+            cameraTilt = -pDx * 0.05; 
+
+            // --- 第三階段：在物理位置完全確立後，進行精準碰撞偵測 ---
+            for (let obs of obstacles) {
+                const obsDx = Math.abs(player.position.x - obs.mesh.position.x);
+                const obsDz = Math.abs(player.position.z - obs.mesh.position.z);
+                
+                if (obsDx < (obs.radiusX + playerRadiusX) && obsDz < (obs.radiusZ + playerRadiusZ)) {
+                    let collisionOccurred = false;
+
+                    // 車頂安全保護
+                    if (player.position.y >= 2.5) {
+                        if (obs.type === 'barrier_high') {
+                            if (!isSliding) {
+                                collisionOccurred = true;
+                            }
+                        }
+                    } 
+                    else {
+                        // 地面或斜坡上的嚴格物理判定
+                        if (obs.type === 'train' || obs.type === 'moving_train') {
+                            collisionOccurred = true;
+                        } 
+                        else if (obs.type === 'ramp_train') {
+                            const dz = player.position.z - obs.mesh.position.z;
+                            // 迎面碰到斜坡（dz 2.8 到 9.5 碼之間）絕對免除正面相撞判定！
+                            // 只有當玩家在後半段垂直車體高度不夠，且不在斜坡段時，才會相撞
+                            if (dz < 2.8) {
+                                collisionOccurred = true;
+                            }
+                        }
+                        else if (obs.type === 'barrier_low') {
+                            if (player.position.y < 0.95) {
+                                collisionOccurred = true;
+                            }
+                        } 
+                        else if (obs.type === 'barrier_high') {
+                            if (!isSliding) {
+                                collisionOccurred = true;
+                            }
+                        }
+                    }
+
+                    if (collisionOccurred && invulnerabilityTimer === 0) {
+                        if (shieldActive) {
+                            shieldActive = false;
+                            invulnerabilityTimer = 90; 
+                            document.getElementById('shieldHUD').classList.add('hidden');
+                            if (shieldMesh) {
+                                player.remove(shieldMesh);
+                                shieldMesh.geometry.dispose();
+                                shieldMesh.material.dispose();
+                                shieldMesh = null;
+                            }
+                            cameraShakeIntensity = 0.55; 
+                        } else {
+                            gameOver();
+                        }
+                    }
+                }
+            }
+
+            // 道具吸取
+            for (let i = itemObjects.length - 1; i >= 0; i--) {
+                const item = itemObjects[i];
+                item.mesh.position.z += zMovement;
+                item.mesh.rotation.y += 0.05;
+
+                const dx = Math.abs(player.position.x - item.mesh.position.x);
+                const dz = Math.abs(player.position.z - item.mesh.position.z);
+
+                if (dx < 0.8 && dz < 0.8 && Math.abs(player.position.y - item.mesh.position.y) < 1.5) {
+                    if (item.type === 'magnet') {
+                        magnetTimer = ITEM_DURATION;
+                        document.getElementById('magnetHUD').classList.remove('hidden');
+                    } else if (item.type === 'shield') {
+                        shieldTimer = ITEM_DURATION;
+                        document.getElementById('shieldHUD').classList.remove('hidden');
+                        if (!shieldActive) {
+                            shieldActive = true;
+                            const sGeo = new THREE.SphereGeometry(1.2, 16, 16);
+                            const sMat = new THREE.MeshBasicMaterial({ color: 0x06b6d4, transparent: true, opacity: 0.28, wireframe: true });
+                            shieldMesh = new THREE.Mesh(sGeo, sMat);
+                            shieldMesh.position.y = 0.9;
+                            player.add(shieldMesh);
+                        }
+                    }
+                    
+                    scene.remove(item.mesh);
+                    itemObjects.splice(i, 1);
+                    cameraShakeIntensity = 0.15; 
+                    continue;
+                }
+
+                if (item.mesh.position.z > 20) {
+                    scene.remove(item.mesh);
+                    itemObjects.splice(i, 1);
+                }
+            }
+
+            // 吃金幣
+            for (let i = coinObjects.length - 1; i >= 0; i--) {
+                const coin = coinObjects[i];
+                coin.position.z += zMovement;
+                coin.rotation.z += 0.04;
+
+                const dx = player.position.x - coin.position.x;
+                const dy = player.position.y - coin.position.y;
+                const dz = player.position.z - coin.position.z;
+                const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+
+                if (magnetTimer > 0 && dist < 24) {
+                    const pullFactor = 0.24;
+                    coin.position.x += dx * pullFactor;
+                    coin.position.y += dy * pullFactor;
+                    coin.position.z += dz * pullFactor;
+                }
+
+                if (dist < 0.95) {
+                    coins++;
+                    document.getElementById('coinCount').innerText = coins;
+                    createCoinPopEffect(coin.position);
+                    scene.remove(coin);
+                    coinObjects.splice(i, 1);
+                    continue;
+                }
+
+                if (coin.position.z > 20) {
+                    scene.remove(coin);
+                    coinObjects.splice(i, 1);
+                }
+            }
+
+            // 道具 HUD 進度條
+            if (magnetTimer > 0) {
+                magnetTimer--;
+                document.getElementById('magnetBar').style.width = (magnetTimer / ITEM_DURATION * 100) + '%';
+                if (magnetTimer === 0) {
+                    document.getElementById('magnetHUD').classList.add('hidden');
+                }
+            }
+            if (shieldTimer > 0) {
+                shieldTimer--;
+                document.getElementById('shieldBar').style.width = (shieldTimer / ITEM_DURATION * 100) + '%';
+                if (shieldTimer === 0) {
+                    document.getElementById('shieldHUD').classList.add('hidden');
+                    shieldActive = false;
+                    if (shieldMesh) {
+                        player.remove(shieldMesh);
+                        shieldMesh = null;
+                    }
+                }
+            }
+
+            handleSpawning();
+
+            // 跑酷小肢體律動
+            const runTime = Date.now() * 0.008;
+            if (!isJumping && !isSliding) {
+                pLeftArm.rotation.x = Math.sin(runTime) * 0.45;
+                pRightArm.rotation.x = -Math.sin(runTime) * 0.45;
+                pLeftLeg.rotation.x = Math.sin(runTime) * 0.15;
+                pRightLeg.rotation.x = -Math.sin(runTime) * 0.15;
+                pBoard.position.y = 0.06 + Math.sin(runTime * 2) * 0.02; 
+            } else if (isSliding) {
+                pLeftArm.rotation.x = -1.2;
+                pRightArm.rotation.x = -1.2;
+                pLeftLeg.rotation.x = -0.5;
+                pRightLeg.rotation.x = -0.5;
+            } else if (isJumping && !isTricking) {
+                pLeftArm.rotation.z = -0.6;
+                pRightArm.rotation.z = 0.6;
+                pLeftLeg.rotation.x = 0.3;
+                pRightLeg.rotation.x = -0.3;
+            }
+
+            // 相機追隨 (平滑柔順適配車頂起伏)
+            smoothedLookAtY += ((player.position.y + 1.2) - smoothedLookAtY) * 0.12;
+            const targetCamY = 4.8 + (player.position.y * 0.4); 
+            camera.position.y += (targetCamY - camera.position.y) * 0.08;
+            camera.position.x += ((player.position.x * 0.4) - camera.position.x) * 0.12;
+
+            if (cameraShakeIntensity > 0) {
+                camera.position.x += (Math.random() - 0.5) * cameraShakeIntensity;
+                camera.position.y += (Math.random() - 0.5) * cameraShakeIntensity;
+                cameraShakeIntensity *= 0.88; 
+                if (cameraShakeIntensity < 0.01) cameraShakeIntensity = 0;
+            }
+
+            const lookAtTarget = new THREE.Vector3(player.position.x * 0.5, smoothedLookAtY, player.position.z - 15);
+            camera.lookAt(lookAtTarget);
+            camera.rotation.z = cameraTilt;
+
+            renderer.render(scene, camera);
+        }
+
+        // --- 點擊開始挑戰 ---
+        function startGame() {
+            obstacles.forEach(o => scene.remove(o.mesh));
+            coinObjects.forEach(c => scene.remove(c));
+            itemObjects.forEach(i => scene.remove(i.mesh));
+            obstacles = []; coinObjects = []; itemObjects = [];
+
+            score = 0; scoreAccumulator = 0; coins = 0; speed = 0.28; targetFov = 60;
+            currentLane = 1; targetX = lanes[currentLane];
+            player.position.set(targetX, 0, 0);
+            targetGroundY = 0; player.position.y = 0;
+            isJumping = false; isSliding = false; isTricking = false;
+            magnetTimer = 0; shieldTimer = 0; shieldActive = false;
+            invulnerabilityTimer = 0;
+            player.visible = true;
+
+            document.getElementById('coinCount').innerText = '0';
+            document.getElementById('magnetHUD').classList.add('hidden');
+            document.getElementById('shieldHUD').classList.add('hidden');
+            if (shieldMesh) { player.remove(shieldMesh); shieldMesh = null; }
+
+            document.getElementById('modalOverlay').classList.add('opacity-0');
+            setTimeout(() => {
+                document.getElementById('modalOverlay').style.display = 'none';
+                gameActive = true;
+            }, 300);
+        }
+
+        function gameOver() {
+            gameActive = false;
+
+            totalCoinsStored += coins;
+            localStorage.setItem('subway_total_coins', totalCoinsStored);
+            document.getElementById('totalCoinsDisplay').innerText = totalCoinsStored;
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('subway_high_score', highScore);
+                document.getElementById('highScoreVal').innerText = highScore;
+            }
+
+            document.getElementById('finalScore').innerText = score;
+            document.getElementById('finalCoins').innerText = '🪙 ' + coins;
+            document.getElementById('scoreBoard').classList.remove('hidden');
+
+            document.getElementById('modalTitle').innerText = "噢不！你被迎面火車撞倒了！";
+            document.getElementById('modalDesc').innerHTML = "別氣餒，更換帥氣的限定滑板，按起跳鍵在空中<b>施展 360 度前空翻特技</b>，繼續刷新記錄吧！";
+            document.getElementById('startBtn').innerText = "再挑戰一次";
+
+            document.getElementById('modalOverlay').style.display = 'flex';
+            setTimeout(() => {
+                document.getElementById('modalOverlay').classList.remove('opacity-0');
+            }, 10);
+        }
+
+        // --- 核心輸入操控模組 ---
+        function setupInput() {
+            window.addEventListener('keydown', e => {
+                if (!gameActive) return;
+                
+                if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+                    if (currentLane > 0) {
+                        // 智慧換道物理判定
+                        if (!isLaneBlocked(currentLane - 1)) {
+                            currentLane--;
+                            targetX = lanes[currentLane];
+                        } else {
+                            cameraShakeIntensity = 0.08; 
+                        }
+                    }
+                }
+                else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+                    if (currentLane < 2) {
+                        if (!isLaneBlocked(currentLane + 1)) {
+                            currentLane++;
+                            targetX = lanes[currentLane];
+                        } else {
+                            cameraShakeIntensity = 0.08; 
+                        }
+                    }
+                }
+                else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W' || e.key === ' ') {
+                    e.preventDefault();
+                    if (!isJumping) {
+                        isJumping = true;
+                        jumpVelocity = jumpStrength;
+                        
+                        if (activeSkin !== 'classic_blue') {
+                            isTricking = true;
+                            trickRotation = 0;
+                        }
+                    }
+                }
+                else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+                    e.preventDefault();
+                    if (isJumping) {
+                        jumpVelocity = -0.32;
+                    } else if (!isSliding) {
+                        isSliding = true;
+                        slideTimer = slideDuration;
+                    }
+                }
+            });
+
+            window.addEventListener('touchstart', e => {
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+            }, { passive: true });
+
+            window.addEventListener('touchend', e => {
+                if (!gameActive) return;
+                const diffX = e.changedTouches[0].clientX - touchStartX;
+                const diffY = e.changedTouches[0].clientY - touchStartY;
+                
+                if (Math.abs(diffX) > Math.abs(diffY)) {
+                    if (diffX > 45) { 
+                        if (currentLane < 2) {
+                            if (!isLaneBlocked(currentLane + 1)) {
+                                currentLane++;
+                                targetX = lanes[currentLane];
+                            } else {
+                                cameraShakeIntensity = 0.08;
+                            }
+                        }
+                    } else if (diffX < -45) { 
+                        if (currentLane > 0) {
+                            if (!isLaneBlocked(currentLane - 1)) {
+                                currentLane--;
+                                targetX = lanes[currentLane];
+                            } else {
+                                cameraShakeIntensity = 0.08;
+                            }
+                        }
+                    }
+                } else {
+                    if (diffY < -45) { 
+                        if (!isJumping) {
+                            isJumping = true;
+                            jumpVelocity = jumpStrength;
+                            if (activeSkin !== 'classic_blue') {
+                                isTricking = true;
+                                trickRotation = 0;
+                            }
+                        }
+                    } else if (diffY > 45) { 
+                        if (isJumping) {
+                            jumpVelocity = -0.32;
+                        } else if (!isSliding) {
+                            isSliding = true;
+                            slideTimer = slideDuration;
+                        }
+                    }
+                }
+            }, { passive: true });
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- 3D 商城旋轉展示引擎 ---
+        function initPreviewEngine() {
+            previewScene = new THREE.Scene();
+            previewScene.background = new THREE.Color(0x0a0a14);
+
+            previewCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+            previewCamera.position.set(0, 1.8, 4.2);
+
+            previewRenderer = new THREE.WebGLRenderer({ canvas: document.getElementById('previewCanvas'), antialias: true });
+            previewRenderer.setSize(180, 240); 
+            previewRenderer.setPixelRatio(window.devicePixelRatio);
+
+            previewScene.add(new THREE.AmbientLight(0xffffff, 1.5));
+            const pDir = new THREE.DirectionalLight(0xffffff, 1.2);
+            pDir.position.set(3, 10, 5);
+            previewScene.add(pDir);
+
+            previewGroup = new THREE.Group();
+            previewScene.add(previewGroup);
+
+            previewSkin(activeSkin);
+            animatePreview();
+            resizePreview();
+        }
+
+        function resizePreview() {
+            const container = document.getElementById('previewCanvas').parentElement;
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+            previewRenderer.setSize(w, h);
+            previewCamera.aspect = w / h;
+            previewCamera.updateProjectionMatrix();
+        }
+
+        function previewSkin(skinId) {
+            while(previewGroup.children.length > 0) {
+                const obj = previewGroup.children[0];
+                previewGroup.remove(obj);
+            }
+
+            const config = SKIN_COLORS[skinId] || SKIN_COLORS['classic_blue'];
+            document.getElementById('previewSkinName').innerText = config.name;
+
+            const board = new THREE.Mesh(
+                new THREE.BoxGeometry(0.85, 0.1, 1.8),
+                new THREE.MeshStandardMaterial({ color: config.board, metalness: 0.4 })
+            );
+            board.position.y = 0.05;
+            previewGroup.add(board);
+
+            const neonMat = new THREE.MeshBasicMaterial({ color: config.energy });
+            const neonL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 1.6), neonMat);
+            neonL.position.set(-0.43, 0.02, 0);
+            const neonR = neonL.clone(); neonR.position.x = 0.43;
+            previewGroup.add(neonL, neonR);
+
+            const body = new THREE.Mesh(
+                new THREE.BoxGeometry(0.55, 0.72, 0.4),
+                new THREE.MeshStandardMaterial({ color: config.body, metalness: 0.2 })
+            );
+            body.position.y = 0.7;
+            previewGroup.add(body);
+
+            const headGroup = new THREE.Group();
+            const face = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.42, 0.42), new THREE.MeshStandardMaterial({ color: 0xfdbbc7 }));
+            headGroup.add(face);
+
+            const visor = new THREE.Mesh(
+                new THREE.BoxGeometry(0.52, 0.16, 0.15),
+                new THREE.MeshBasicMaterial({ color: config.energy })
+            );
+            visor.position.set(0, 0.08, 0.16);
+            headGroup.add(visor);
+
+            const band = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.08, 0.2), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
+            band.position.y = 0.22;
+            headGroup.add(band);
+
+            headGroup.position.y = 1.25;
+            previewGroup.add(headGroup);
+
+            const arm = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.45, 0.14), new THREE.MeshStandardMaterial({ color: config.body }));
+            arm.position.set(-0.35, 0.78, 0);
+            const armR = arm.clone(); armR.position.x = 0.35;
+            previewGroup.add(arm, armR);
+
+            const leg = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.4, 0.15), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
+            leg.position.set(-0.18, 0.28, 0);
+            const legR = leg.clone(); legR.position.x = 0.18;
+            previewGroup.add(leg, legR);
+
+            updateShopButtons();
+        }
+
+        function animatePreview() {
+            previewAnimationFrameId = requestAnimationFrame(animatePreview);
+            if (previewGroup) {
+                previewGroup.rotation.y += 0.015; 
+            }
+            previewRenderer.render(previewScene, previewCamera);
+        }
+
+        function updateShopButtons() {
+            Object.keys(SKIN_COLORS).forEach(skinId => {
+                const btn = document.getElementById('btn-' + skinId);
+                if (!btn) return;
+
+                if (activeSkin === skinId) {
+                    btn.innerText = "使用中";
+                    btn.className = "text-xs font-bold px-3 py-2 rounded-xl bg-green-500 text-white cursor-default";
+                } else if (unlockedSkins.includes(skinId)) {
+                    btn.innerText = "選擇";
+                    btn.className = "text-xs font-bold px-3 py-2 rounded-xl bg-gray-800 text-yellow-400 hover:bg-gray-700 transition";
+                } else {
+                    const price = skinId === 'sakura_pink' ? 200 :
+                                  skinId === 'flame_orange' ? 500 :
+                                  skinId === 'cyber_green' ? 1200 :
+                                  skinId === 'golden_emperor' ? 3000 : 5000;
+                    btn.innerText = `解鎖`;
+                    btn.className = "text-xs font-bold px-3 py-2 rounded-xl bg-yellow-500 text-gray-950 hover:bg-yellow-400 transition";
+                }
+            });
+        }
+
+        window.buyOrSelectSkin = function(skinId, price) {
+            if (unlockedSkins.includes(skinId)) {
+                activeSkin = skinId;
+                localStorage.setItem('subway_active_skin', activeSkin);
+                
+                scene.remove(player);
+                createPlayer();
+                
+                previewSkin(skinId);
+            } else {
+                if (totalCoinsStored >= price) {
+                    totalCoinsStored -= price;
+                    unlockedSkins.push(skinId);
+                    localStorage.setItem('subway_total_coins', totalCoinsStored);
+                    localStorage.setItem('subway_unlocked_skins', JSON.stringify(unlockedSkins));
+                    
+                    document.getElementById('totalCoinsDisplay').innerText = totalCoinsStored;
+                    
+                    activeSkin = skinId;
+                    localStorage.setItem('subway_active_skin', activeSkin);
+
+                    scene.remove(player);
+                    createPlayer();
+                    
+                    previewSkin(skinId);
+                } else {
+                    const btn = document.getElementById('btn-' + skinId);
+                    btn.classList.add('animate-bounce');
+                    setTimeout(() => btn.classList.remove('animate-bounce'), 1000);
+                }
+            }
+        };
+
+        // --- 頁籤切換核心組件 ---
+        const tabGameBtn = document.getElementById('tabGameBtn');
+        const tabShopBtn = document.getElementById('tabShopBtn');
+        const tabRulesBtn = document.getElementById('tabRulesBtn');
+
+        const tabGame = document.getElementById('tabGame');
+        const tabShop = document.getElementById('tabShop');
+        const tabRules = document.getElementById('tabRules');
+
+        function selectTab(tab) {
+            tabGameBtn.className = "flex-1 font-bold pb-2.5 border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-colors";
+            tabShopBtn.className = "flex-1 font-bold pb-2.5 border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-colors";
+            tabRulesBtn.className = "flex-1 font-bold pb-2.5 border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-colors";
+            
+            tabGame.classList.add('hidden');
+            tabShop.classList.add('hidden');
+            tabRules.classList.add('hidden');
+
+            if (tab === 'game') {
+                tabGameBtn.className = "flex-1 font-bold pb-2.5 border-b-2 border-yellow-400 text-yellow-400 transition-colors";
+                tabGame.classList.remove('hidden');
+            } else if (tab === 'shop') {
+                tabShopBtn.className = "flex-1 font-bold pb-2.5 border-b-2 border-yellow-400 text-yellow-400 transition-colors";
+                tabShop.classList.remove('hidden');
+                setTimeout(resizePreview, 50); 
+            } else if (tab === 'rules') {
+                tabRulesBtn.className = "flex-1 font-bold pb-2.5 border-b-2 border-yellow-400 text-yellow-400 transition-colors";
+                tabRules.classList.remove('hidden');
+            }
+        }
+
+        tabGameBtn.addEventListener('click', () => selectTab('game'));
+        tabShopBtn.addEventListener('click', () => selectTab('shop'));
+        tabRulesBtn.addEventListener('click', () => selectTab('rules'));
+
+        document.getElementById('startBtn').addEventListener('click', startGame);
+
+        const isFirstPlay = !localStorage.getItem('subway_first_play_done');
+        if (isFirstPlay) {
+            document.getElementById('firstPlayOverlay').classList.remove('hidden');
+        }
+        document.getElementById('closeFirstPlayBtn').addEventListener('click', () => {
+            localStorage.setItem('subway_first_play_done', 'true');
+            document.getElementById('firstPlayOverlay').classList.add('hidden');
+        });
+
+        window.onload = function() {
+            init();
+            requestAnimationFrame(update);
+        };
+    </script>
+</body>
+</html>
