@@ -1605,7 +1605,7 @@
             if (score > 0) {
                     setTimeout(() => {
                         let playerName = prompt("請輸入您的霓虹特攻代號（排行榜名稱）：", "無名英雄");
-                        if (playerName) {
+                        if (playerName && playerName.trim() !== "") {
                             uploadScoreToFirebase(playerName, Math.floor(score));
                         }
                 }, 500);
@@ -1902,12 +1902,16 @@
                       appId: "1:435343903658:web:8dc18d14ef9e725018b9d3"
                     };
         
-            // 初始化 Firebase
+           try {
+        // 防止重複初始化
             if (!firebase.apps.length) {
-                firebase.initializeApp(firebaseConfig);
+                    firebase.initializeApp(firebaseConfig);
             }
             db = firebase.firestore();
-            console.log("Firebase Firestore 初始化成功！");
+            console.log("🚀 Firebase 量子資料庫連線成功！");
+            } catch (error) {
+                console.error("❌ Firebase 初始化失敗，請檢查金鑰設定:", error);
+            }
         }
 
         async function uploadScore(name, score) {
@@ -1927,7 +1931,8 @@
 
         function uploadScoreToFirebase(playerName, finalScore) {
             if (!db) {
-                console.error("資料庫尚未就緒，無法上傳分數！");
+                console.error("❌ 資料庫尚未就緒，無法寫入資料！請檢查 initFirebase 是否成功。");
+                alert("資料庫連線失敗，分數未能成功上傳！");
                 return;
             }
         
@@ -1935,15 +1940,16 @@
             db.collection("leaderboard").add({
                 name: playerName,
                 score: parseInt(finalScore),
-                timestamp: firebase.firestore.FieldValue.serverTimestamp() // 記錄伺服器時間
+                timestamp: firebase.firestore.FieldValue.serverTimestamp() // 自動抓取伺服器時間排序
             })
-            .then(() => {
-                console.log("排行榜分數上傳成功！");
-                // 成功後可以重新載入排行榜畫面
+            .then((docRef) => {
+                console.log("✨ 排行榜分數寫入成功！Doc ID:", docRef.id);
+                // 成功上傳後，自動重新拉取最新排行榜
                 loadLeaderboard(); 
             })
             .catch((error) => {
-                console.error("分數上傳失敗: ", error);
+                console.error("❌ 寫入資料庫失敗，原因:", error);
+                alert("寫入資料庫失敗！請檢查 Firebase 規則設定或主控台報錯。");
             });
         }
 
