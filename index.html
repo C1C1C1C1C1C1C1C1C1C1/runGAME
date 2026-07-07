@@ -1872,12 +1872,14 @@
         const tabGameBtn = document.getElementById('tabGameBtn');
         const tabShopBtn = document.getElementById('tabShopBtn');
         const tabRulesBtn = document.getElementById('tabRulesBtn');
+        const tabLeaderboardBtn = document.getElementById('tabLeaderboardBtn'); // 🟢 補上排行榜按鈕
 
         const tabGame = document.getElementById('tabGame');
         const tabShop = document.getElementById('tabShop');
         const tabRules = document.getElementById('tabRules');
+        tabLeaderboard = document.getElementById('tabLeaderboard'); // 🟢 補上排行榜分頁容器
 
-        }
+    
 
         // ==========================================
         // 🟢 新增第 6 部分：Firebase 核心功能函數 (上傳與載入)
@@ -1980,10 +1982,12 @@
             tabGameBtn.className = "flex-1 font-bold pb-2.5 border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-colors";
             tabShopBtn.className = "flex-1 font-bold pb-2.5 border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-colors";
             tabRulesBtn.className = "flex-1 font-bold pb-2.5 border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-colors";
+            if (window.tabLeaderboardBtn) tabLeaderboardBtn.className = "flex-1 font-bold pb-2.5 border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-colors"; // 💡 新增
             
             tabGame.classList.add('hidden');
             tabShop.classList.add('hidden');
             tabRules.classList.add('hidden');
+            if (window.tabLeaderboard) tabLeaderboard.classList.add('hidden'); // 💡 新增
 
             if (tab === 'game') {
                 tabGameBtn.className = "flex-1 font-bold pb-2.5 border-b-2 border-yellow-400 text-yellow-400 transition-colors";
@@ -1995,14 +1999,14 @@
             } else if (tab === 'rules') {
                 tabRulesBtn.className = "flex-1 font-bold pb-2.5 border-b-2 border-yellow-400 text-yellow-400 transition-colors";
                 tabRules.classList.remove('hidden');
-                } else if (tab === 'leaderboard') { // 新增：切換到排行榜分頁並載入資料
-                tabLeaderboardBtn.className = "flex-1 font-bold pb-2.5 border-b-2 border-yellow-400 text-yellow-400 transition-colors";
-                tabLeaderboard.classList.remove('hidden');
-                if (typeof loadLeaderboard === "function") {
+            } else if (tab === 'leaderboard') { // 💡 修正：把錯位大括號刪掉，回歸標準 else if 結構
+                if (window.tabLeaderboardBtn && window.tabLeaderboard) {
+                    tabLeaderboardBtn.className = "flex-1 font-bold pb-2.5 border-b-2 border-yellow-400 text-yellow-400 transition-colors";
+                    tabLeaderboard.classList.remove('hidden');
                     loadLeaderboard();
                 }
             }
-        }
+        } // 👈 確保整段函數完美閉合
 
         tabGameBtn.addEventListener('click', () => selectTab('game'));
         tabShopBtn.addEventListener('click', () => selectTab('shop'));
@@ -2013,16 +2017,23 @@
         document.getElementById('startBtn').addEventListener('click', startGame);
 
         const isFirstPlay = !localStorage.getItem('subway_first_play_done');
-        if (isFirstPlay) {
-            document.getElementById('firstPlayOverlay').classList.remove('hidden');
-        }
-        document.getElementById('closeFirstPlayBtn').addEventListener('click', () => {
-            localStorage.setItem('subway_first_play_done', 'true');
-            document.getElementById('firstPlayOverlay').classList.add('hidden');
-        });
+if (isFirstPlay) {
+    const firstPlayOverlay = document.getElementById('firstPlayOverlay');
+    if (firstPlayOverlay) firstPlayOverlay.classList.remove('hidden');
+}
+
+const closeFirstPlayBtn = document.getElementById('closeFirstPlayBtn');
+if (closeFirstPlayBtn) {
+    closeFirstPlayBtn.addEventListener('click', () => {
+        localStorage.setItem('subway_first_play_done', 'true');
+        const firstPlayOverlay = document.getElementById('firstPlayOverlay');
+        if (firstPlayOverlay) firstPlayOverlay.classList.add('hidden');
+    });
+}
 
         window.onload = function() {
             init();
+            initFirebase(); // 🟢 核心修正：確保資料庫連線在遊戲啟動前就緒
             requestAnimationFrame(update);
         };
     </script>
