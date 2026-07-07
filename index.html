@@ -8,6 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <style>
         body, html {
             margin: 0;
@@ -138,6 +140,7 @@
                 <button id="tabGameBtn" class="flex-1 font-bold pb-2.5 border-b-2 border-yellow-400 text-yellow-400 transition-colors">挑戰開跑</button>
                 <button id="tabShopBtn" class="flex-1 font-bold pb-2.5 border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-colors">滑板與角色造型 (3D預覽)</button>
                 <button id="tabRulesBtn" class="flex-1 font-bold pb-2.5 border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-colors">玩法教學</button>
+                <button id="tabLeaderboardBtn" class="flex-1 font-bold pb-2.5 border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-colors">霓虹英雄榜</button>
             </div>
 
             <!-- 頁籤 A：開始挑戰 -->
@@ -215,7 +218,7 @@
                             </div>
                             <button onclick="buyOrSelectSkin('midnight_purple', 5000); event.stopPropagation();" id="btn-midnight_purple" class="text-xs font-bold px-3 py-2 rounded-xl transition">解鎖</button>
                         </div>
-                    </div>
+                   </div>
                 </div>
             </div>
 
@@ -234,6 +237,16 @@
                     <p>• <b>撞擊與墜地震感</b>：碰撞或落地時加入<b>視角微幅震動</b>，大幅提升打擊回饋。</p>
                 </div>
             </div>
+
+            <div id="tabLeaderboard" class="hidden text-left max-h-72 overflow-y-auto pr-1 no-scrollbar space-y-2">
+                <div class="bg-gray-950 p-4 rounded-xl border border-gray-800">
+                    <span class="font-bold text-cyan-400 text-sm block mb-3 text-center tracking-widest uppercase">🏆 全球 TOP 10 賽博紀錄 🏆</span>
+                    <div id="leaderboardList" class="space-y-2">
+                        <div class="text-center text-xs text-gray-500 py-4 animate-pulse">正在連線至量子矩陣...</div>
+                    </div>
+                </div>
+            </div>
+            
         </div>
     </div>
 
@@ -257,6 +270,9 @@
 
     <script>
         // --- 核心遊戲變數 ---
+        // 新增：Firebase 資料庫與排行榜專用變數
+        let db;
+        let isLeaderboardLoaded = false;
         let scene, camera, renderer;
         let player;
         const lanes = [-3.2, 0, 3.2];
@@ -1861,6 +1877,105 @@
         const tabShop = document.getElementById('tabShop');
         const tabRules = document.getElementById('tabRules');
 
+        }
+
+        // ==========================================
+        // 🟢 新增第 6 部分：Firebase 核心功能函數 (上傳與載入)
+        // ==========================================
+        function initFirebase() {
+            try {
+                if (typeof firebase !== 'undefined') {
+                    db = firebase.database();
+                    console.log("⚡ 賽博矩陣連線成功：Firebase Realtime Database 已就緒");
+                } else {
+                    console.error("❌ Firebase 未定義，請檢查 CDN SDK 是否正確載入");
+                }
+            } catch (e) {
+                console.error("❌ 初始化 Firebase 錯誤:", e);
+            }
+        }
+
+        async function uploadScore(name, score) {
+            if (!db) return;
+            try {
+                const scoreRef = db.ref('leaderboard').push();
+                await scoreRef.set({
+                    username: name || "無名英雄",
+                    score: parseInt(score) || 0,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
+                });
+                console.log("🏆 分數上傳成功！");
+            } catch (e) {
+                console.error("❌ 分數上傳失敗:", e);
+            }
+        }
+
+        function loadLeaderboard() {
+            if (!db) {
+                document.getElementById('leaderboardList').innerHTML = `<div class="text-center text-xs text-red-400 py-4">資料庫未連線</div>`;
+                return;
+            }
+            
+            // 限制只取前 10 名最高分
+            db.ref('leaderboard').orderByChild('score').limitToLast(10).once('value', (snapshot) => {
+                const listContainer = document.getElementById('leaderboardList');
+                listContainer.innerHTML = ''; // 清空載入中字樣
+                
+                let records = [];
+                snapshot.forEach((childSnapshot) => {
+                    records.push(childSnapshot.val());
+                });
+                
+                // 因為 Firebase limitToLast 是升冪，我們需要反轉變成降冪（高分在上面）
+                records.reverse();
+                
+                if (records.length === 0) {
+                    listContainer.innerHTML = `<div class="text-center text-xs text-gray-500 py-4">目前尚無傳奇紀錄，等待你來開創！</div>`;
+                    return;
+                }
+                
+                records.forEach((data, index) => {
+                    const rank = index + 1;
+                    let medal = `<span class="w-5 text-gray-500 font-bold text-center">${rank}</span>`;
+                    let bgStyle = "bg-gray-900/40 border-gray-900";
+                    let nameStyle = "text-gray-300";
+                    let scoreStyle = "text-gray-400";
+
+                    if (rank === 1) {
+                        medal = `🥇`;
+                        bgStyle = "bg-yellow-950/40 border-yellow-700/50";
+                        nameStyle = "text-yellow-400 font-bold";
+                        scoreStyle = "text-yellow-300 font-black neon-text";
+                    } else if (rank === 2) {
+                        medal = `🥈`;
+                        bgStyle = "bg-slate-900/50 border-slate-700/50";
+                        nameStyle = "text-slate-300 font-bold";
+                        scoreStyle = "text-slate-200 font-bold";
+                    } else if (rank === 3) {
+                        medal = `🥉`;
+                        bgStyle = "bg-amber-950/30 border-amber-800/40";
+                        nameStyle = "text-amber-500 font-bold";
+                        scoreStyle = "text-amber-400 font-bold";
+                    }
+
+                    const item = document.createElement('div');
+                    item.className = `flex items-center justify-between p-2.5 rounded-lg border ${bgStyle} text-xs transition-all hover:scale-[1.01]`;
+                    item.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            ${medal}
+                            <span class="${nameStyle} truncate max-w-[120px]">${data.username}</span>
+                        </div>
+                        <span class="${scoreStyle} font-mono tracking-wider">${data.score.toLocaleString()} 分</span>
+                    `;
+                    listContainer.appendChild(item);
+                });
+            }, (error) => {
+                console.error("載入排行榜失敗:", error);
+                document.getElementById('leaderboardList').innerHTML = `<div class="text-center text-xs text-red-400 py-4">數據載入失敗</div>`;
+            });
+        }
+        // 🟢 以上為新增的內容
+        
         function selectTab(tab) {
             tabGameBtn.className = "flex-1 font-bold pb-2.5 border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-colors";
             tabShopBtn.className = "flex-1 font-bold pb-2.5 border-b-2 border-transparent text-gray-400 hover:text-gray-200 transition-colors";
@@ -1880,12 +1995,20 @@
             } else if (tab === 'rules') {
                 tabRulesBtn.className = "flex-1 font-bold pb-2.5 border-b-2 border-yellow-400 text-yellow-400 transition-colors";
                 tabRules.classList.remove('hidden');
+                } else if (tab === 'leaderboard') { // 新增：切換到排行榜分頁並載入資料
+                tabLeaderboardBtn.className = "flex-1 font-bold pb-2.5 border-b-2 border-yellow-400 text-yellow-400 transition-colors";
+                tabLeaderboard.classList.remove('hidden');
+                if (typeof loadLeaderboard === "function") {
+                    loadLeaderboard();
+                }
             }
         }
 
         tabGameBtn.addEventListener('click', () => selectTab('game'));
         tabShopBtn.addEventListener('click', () => selectTab('shop'));
         tabRulesBtn.addEventListener('click', () => selectTab('rules'));
+        // 新增：綁定排行榜按鈕點擊事件
+        tabLeaderboardBtn.addEventListener('click', () => selectTab('leaderboard'));
 
         document.getElementById('startBtn').addEventListener('click', startGame);
 
